@@ -74,7 +74,6 @@ run_case() {
         "$backend"
         "$PLATFORM"
         "kind=$kind"
-        "vb=0"
         "model=$model"
     )
 

@@ -18,6 +18,8 @@ usage:
 platforms:
   3080ti -> gpu_vram=12, threads=12
   4090   -> gpu_vram=24, threads=16
+  3070   -> gpu_vram=8,  threads=7   (scaled-down profile, not a paper platform)
+  3080   -> gpu_vram=10, threads=12
 
 backends:
   llama_cpp   llama.cpp path, uses -fit on; vb=0 maps to -fitt 512
@@ -87,6 +89,14 @@ set_platform_defaults() {
     4090)
         gpu_vram=24
         threads=16
+        ;;
+    3070)
+        gpu_vram=8
+        threads=7
+        ;;
+    3080)
+        gpu_vram=10
+        threads=12
         ;;
     *)
         usage
