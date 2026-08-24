@@ -1,4 +1,79 @@
-# TEST COMMIT
+# Wasted Rebalancing Evaluation
+
+## Motivation.
+
+KAIROX는 FFN 뉴런을 그룹 단위(16개씩) 로 묶어서 GPU 캐시 교체(rebalancing)를 결정한다.
+
+이 때, 교체 결정은 그룹 단위인데, 실제 연산 게이팅은 뉴런 단위로 발생한다. 즉, 한 그룹 안 16개 뉴런 중 일부 뉴런만 자주 필요해도 해당 그룹 전체가 Hot으로 분류되어 GPU에 올라가고, 나머지 뉴런들은 GPU 캐시 공간만 차지한 채 사용되지 않을 수도 있다.
+
+## 2. 코드 수정 사항
+
+계측 코드는 새 GGML 연산을 추가하지 않고, 이미 매 토큰·매 레이어 실행되는 기존 함수 3곳에
+카운터를 얹는 방식으로 구현했다. 수정 파일은 다음 3개다.
+
+| 파일 | 역할 |
+|---|---|
+| `ggml/include/ggml-kairox.hpp` | 계측 On/Off 스위치(`KAIROX_DUMP_ACTIVATION`)와 뉴런별 카운터 필드 5종 정의 |
+| `ggml/src/ggml-cuda/ggml-cuda.cu` | "이 뉴런이 지금 활성화됐고 + GPU에 상주 중인가"를 판정해서 `dbg_used_since_load`를 세팅 |
+| `src/llama-kairox.cpp` | **실제 낭비 판정** — 로드/퇴출이 일어나는 순간 카운터를 갱신, 종료 시 CSV로 덤프 |
+
+### 핵심 로직 — `src/llama-kairox.cpp:79-91`
+
+낭비 여부가 실제로 결정되는 곳은 `kairox_layer_cache::kairox_reload_plan()` 안, 이번 스텝에
+**실제로 실행되는 스왑**을 순회하는 루프다:
+
+```cpp
+if (k_kairox_dump_activation) { // 계측(KAIROX_DUMP_ACTIVATION)이 켜져 있을 때만 낭비 카운팅 수행
+    const int evict_base = group_to_evict * group_size; // evict 될 그룹의 시작 인덱스
+    const int load_base  = group_to_load * group_size; // load 될 그룹의 시작 인덱스
+    for (int k = 0; k < group_size; ++k) { // 그룹 내 뉴런들에 대해
+        const int en = evict_base + k; // evict 될 뉴런의 인덱스
+        if (!dbg_used_since_load[en]) { // 마지막으로 reload 이후 사용된 적이 없는 뉴런이라면
+            ++dbg_wasted_loads[en];  // 로드된 뒤 단 한 번도 안 쓰이고 그대로 쫓겨남 → 낭비 1회 추가
+        }
+        const int ln = load_base + k; // load 될 뉴런의 인덱스
+        dbg_used_since_load[ln] = 0;  // 방금 새로 로드됐으니 "아직 안 씀" 상태로 리셋
+        ++dbg_total_loads[ln]; // 해당 뉴런이 reload 된 횟수 증가
+    }
+}
+```
+
+동작 순서는 다음과 같다.
+
+1. **`dbg_used_since_load[n]`** — 뉴런 n마다 1비트 상태를 들고 있다. "마지막으로 로드된 이후
+   한 번이라도 사용됐는가"를 나타낸다.
+2. 그룹이 **로드(load)** 될 때(87-89행) → 그 그룹에 속한 16개 뉴런 전부 `used_since_load = 0`으로
+   리셋하고 `total_loads`를 1씩 증가시킨다 — "이번에 새로 올라왔고, 아직은 안 썼다"는 뜻.
+3. 그룹이 **퇴출(evict)** 될 때(83-86행) → 퇴출 직전 `used_since_load`를 검사한다. 여전히 0이면
+   (로드된 이후 단 한 번도 켜진 적 없이 쫓겨나는 것이므로) `wasted_loads`를 1 증가시킨다.
+4. `used_since_load`가 1로 바뀌는 시점은 이 파일이 아니라 `ggml-cuda.cu`의
+   `kairox_dump_activation_counts()`다 — 예측기 점수(`sparse_idx`)가 임계값(0.5) 이상이면서
+   동시에 그 뉴런이 지금 GPU에 상주 중일 때만 1로 세팅된다. **활성화됐어도 캐시 밖에 있어서
+   CPU 경로로 계산됐다면 세팅되지 않는다** — 재고 싶은 건 "활성화 여부"가 아니라
+   "GPU 캐시 슬롯이 쓸모 있었는가"이기 때문이다.
+5. 이 판정 함수는 반드시 `kairox_reload_plan()`(위 로직)보다 **먼저** 호출돼야 한다 — 순서가
+   바뀌면 "방금 막 로드된 뉴런"이 즉시 상주 상태로 잡혀 착시가 생기는 오프바이원 버그가 된다.
+
+최종 지표는 모든 레이어·모든 뉴런에 대해 합산한 `sum(wasted_loads) / sum(total_loads)`다. 결과는
+`kairox_cache_manager`의 소멸자에서 CSV(`layer,neuron,activation_count,resident_count,token_count,total_loads,wasted_loads`)로
+저장된다.
+
+## 3. 실험 결과 (요약)
+
+- **모델**: prosparse-llama-2-7b (Q8_0), **GPU**: RTX 3070 8GB, **설정**: `vb=6`, completion 모드, 10회 벤치
+- **재현**: `KAIROX_DUMP_ACTIVATION=1 bash test_kairox.sh kairox 3070 kind=completion vb=6 model=... model_split=... bench bench_runs=10`
+
+| 지표 | 값 |
+|---|---|
+| 전체 로드 이벤트 | 8,806,112 |
+| 그중 낭비된 로드 | 4,576,507 |
+| **낭비율** | **51.97%** |
+| 최선 레이어 | layer 2 (31.6%) |
+| 최악 레이어 | layer 0 (70.1%) |
+
+동적으로 GPU에 리밸런싱된 스왑의 **절반 이상이 단 한 토큰도 기여하지 못하고 그대로 퇴출**됐다.
+레이어가 깊어질수록(캐시 예산이 상대적으로 빠듯해질수록) 낭비율도 대체로 증가하는 경향을 보였다.
+
 
 ---
 

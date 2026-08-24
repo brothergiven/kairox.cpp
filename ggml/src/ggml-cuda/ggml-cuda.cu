@@ -2555,8 +2555,77 @@ static inline T * kairox_decode_ptr(const int32_t * op_params, size_t offset) {
     return static_cast<T *>(ptr);
 }
 
+// 디버그 전용: RELOAD_PLAN이 이 레이어에서 실행될 시점엔 sparse_idx(=predictor의 sigmoid 출력,
+// F32, 이번 배치의 토큰마다 한 열씩)가 이미 GPU에 계산돼 있다 — load_group/evict_group(dst->src[0/1])
+// 자체가 같은 그래프 안에서 이 값으로부터 미리 파생된 것이기 때문이다. 그래서 새 GGML 연산을 추가하는
+// 대신, 아래에서 어차피 하던 device→host 동기화에 편승해서 한 번 다운로드하고, build_sparse_ffn_dfr과
+// 똑같은 임계값(>= 0.5, kairox_cache_manager::sparse_threshold의 고정 초기값과 동일)으로 판정한 뒤
+// KAIROX_DUMP_ACTIVATION=1일 때 뉴런별 활성화 카운트를 누적한다. 상주(residency) 카운트는 이 함수가
+// 아니라 별도로, 아래의 kairox_reload_plan()이 이번 스텝 스왑을 실제로 반영한 "뒤에" 잰다 —
+// 그게 바로 레이어 il+1이 실제로 읽게 될 캐시 상태이기 때문이다.
+static void kairox_dump_activation_counts(ggml_backend_cuda_context & ctx, kairox_layer_cache * kairox_lc) {
+    // sparse_idx 가 없으면 Predictor Score 자체가 없다.
+    // sparse_idx 는 각 토큰에 대한 per-neuron predictor score 를 저장하는 텐서입니다.
+    // 만약 sparse_idx 가 없다면, 해당 레이어에서 predictor score 자체가 계산되지 않았다는 의미입니다.
+    // 즉, 이 레이어에서는 sparse activation 을 위한 predictor score 를 생성하지 않았거나, 해당 레이어가 sparse activation 을 지원하지 않는 경우일 수 있습니다.
+    // per-neuron predictor score는 해당 뉴런이 활성화 될 확률.
+    if (!kairox_lc->sparse_idx) {
+        return;
+    }
+
+    // 현재 layer의 sparse_idx 데이터를 호스트로 복사함.
+    // sparse_idx 는 각 토큰에 대한 per-neuron predictor score 를 저장하는 텐서입니다.
+    const int n_ff = kairox_lc->cache_shape.n_neurons;
+    const int ntok = (int) kairox_lc->sparse_idx->ne[1];
+    GGML_ASSERT((int) kairox_lc->sparse_idx->ne[0] == n_ff);
+
+    std::vector<float> sparse_idx_host(size_t(n_ff) * ntok);
+    CUDA_CHECK(cudaMemcpyAsync(sparse_idx_host.data(), kairox_lc->sparse_idx->data,
+                               sizeof(float) * sparse_idx_host.size(), cudaMemcpyDeviceToHost, ctx.stream()));
+    CUDA_CHECK(cudaStreamSynchronize(ctx.stream()));
+
+    // 스왑 "전" 상주 상태 — 이번 스텝의 kairox_reload_plan()이 아직 실행되기 전이므로, 이번 토큰이
+    // 시작되는 시점에 그 뉴런이 실제로 GPU에 있었는지를 나타낸다. "지금 활성화됐다"는 사실이
+    // "실제로 로드돼 있는 동안 쓰였다"는 뜻이 되려면 반드시 이 시점 기준이어야 한다.
+    const auto * resident_now = (const int32_t *) kairox_lc->neuron_mask->data;
+
+    for (int t = 0; t < ntok; ++t) {
+        // 각 토큰에 대해, 각 뉴런의 predictor score를 확인하고, 0.5 이상이면 활성화된 것으로 간주하여 카운트를 증가시킨다.
+        const float * col = sparse_idx_host.data() + size_t(t) * n_ff;
+        for (int n = 0; n < n_ff; ++n) {
+            const bool active = col[n] >= 0.5f; // prediction 결과가 active라면
+            kairox_lc->dbg_activation_count[n] += active; // bool 값을 더해 그대로 activation count 증가
+            if (active && resident_now[n]) {
+                kairox_lc->dbg_used_since_load[n] = 1; // active이고 resident_now[n]이 true이면, 해당 뉴런은 활성화되었고, 현재 resident 상태이므로 used_since_load를 1로 설정
+            }
+        }
+    }
+    kairox_lc->dbg_token_count += ntok;
+}
+
+// 디버그 전용: 이번 스텝의 kairox_reload_plan() 스왑이 "끝난 뒤" 호출된다 — 즉 다음 레이어(il+1)가
+// 실제로 읽게 될 최신 캐시 상태 기준으로, 지금 GPU에 상주 중인 뉴런마다 상주 카운트를 ntok만큼 더한다.
+// (시간 가중 지표용 — kairox_dump_activation_counts의 activation_count와 짝을 이룬다.)
+static void kairox_dump_residency_counts(kairox_layer_cache * kairox_lc, int ntok) {
+    const auto * resident = (const int32_t *) kairox_lc->neuron_mask->data;
+    for (int n = 0; n < kairox_lc->cache_shape.n_neurons; ++n) {
+        if (resident[n]) {
+            kairox_lc->dbg_resident_count[n] += ntok;  // 상주 중인 뉴런만 카운트 증가
+        }
+    }
+}
+
 static void ggml_cuda_reload_plan(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
     auto * kairox_lc = kairox_decode_ptr<kairox_layer_cache>(dst->op_params, 0);
+    // 계측이 켜져 있고 sparse_idx가 있을 때만 이번 스텝의 토큰 수를 미리 기억해둔다 —
+    // 아래에서 kairox_reload_plan() 실행 "후"에 상주 카운트를 몇 개 더할지 알아야 하기 때문.
+    const int dbg_ntok = k_kairox_dump_activation && kairox_lc->sparse_idx ? (int) kairox_lc->sparse_idx->ne[1] : 0;
+
+    if (k_kairox_dump_activation) {
+        // 반드시 kairox_reload_plan()(스왑 실행)보다 먼저 호출해야 한다 — 여기서 쓰는
+        // resident_now가 "이번 스텝 스왑 전" 상태를 봐야 하기 때문(순서가 바뀌면 오프바이원 버그).
+        kairox_dump_activation_counts(ctx, kairox_lc); // 해당 레이어의 Activation Count를 구조체에 기록
+    }
 
     CUDA_CHECK(cudaMemcpyAsync((float *) kairox_lc->load_group_host->data, (const float *) dst->src[0]->data,
                                sizeof(float) * kairox_lc->cache_shape.n_groups, cudaMemcpyDeviceToHost, ctx.stream()));
@@ -2565,6 +2634,11 @@ static void ggml_cuda_reload_plan(ggml_backend_cuda_context & ctx, ggml_tensor *
     CUDA_CHECK(cudaStreamSynchronize(ctx.stream()));
 
     kairox_lc->kairox_reload_plan();
+
+    if (k_kairox_dump_activation && dbg_ntok > 0) {
+        // 스왑 "후" 상태로 상주 카운트를 잰다 — 이게 레이어 il+1이 실제로 읽게 될 캐시 상태다.
+        kairox_dump_residency_counts(kairox_lc, dbg_ntok);
+    }
 
     if (kairox_lc->reload_count < kairox_lc->reload_planned_count) {
         CUDA_CHECK(cudaMemcpyAsync((float *) kairox_lc->group_mask->data, (float *) kairox_lc->group_mask_host->data,
