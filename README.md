@@ -1,6 +1,6 @@
 # Wasted Rebalancing Evaluation
 
-## Motivation.
+## 1. Motivation
 
 KAIROX는 FFN 뉴런을 그룹 단위(16개씩) 로 묶어서 GPU 캐시 교체(rebalancing)를 결정한다.
 
@@ -23,7 +23,7 @@ KAIROX는 FFN 뉴런을 그룹 단위(16개씩) 로 묶어서 GPU 캐시 교체(
 **실제로 실행되는 스왑**을 순회하는 루프다:
 
 ```cpp
-if (k_kairox_dump_activation) { // 계측(KAIROX_DUMP_ACTIVATION)이 켜져 있을 때만 낭비 카운팅 수행
+if (k_kairox_dump_activation) { // 계측(KAIROX_DUMP_ACTIVATION)이 켜져 있을 때
     const int evict_base = group_to_evict * group_size; // evict 될 그룹의 시작 인덱스
     const int load_base  = group_to_load * group_size; // load 될 그룹의 시작 인덱스
     for (int k = 0; k < group_size; ++k) { // 그룹 내 뉴런들에 대해
@@ -58,21 +58,165 @@ if (k_kairox_dump_activation) { // 계측(KAIROX_DUMP_ACTIVATION)이 켜져 있�
 `kairox_cache_manager`의 소멸자에서 CSV(`layer,neuron,activation_count,resident_count,token_count,total_loads,wasted_loads`)로
 저장된다.
 
-## 3. 실험 결과 (요약)
+## 3. 실행 방법
 
-- **모델**: prosparse-llama-2-7b (Q8_0), **GPU**: RTX 3070 8GB, **설정**: `vb=6`, completion 모드, 10회 벤치
-- **재현**: `KAIROX_DUMP_ACTIVATION=1 bash test_kairox.sh kairox 3070 kind=completion vb=6 model=... model_split=... bench bench_runs=10`
+전체 실험은 아래 순서를 따른다. 
 
-| 지표 | 값 |
-|---|---|
-| 전체 로드 이벤트 | 8,806,112 |
-| 그중 낭비된 로드 | 4,576,507 |
-| **낭비율** | **51.97%** |
-| 최선 레이어 | layer 2 (31.6%) |
-| 최악 레이어 | layer 0 (70.1%) |
+### 3-1. 빌드
+
+```bash
+bash compile_kairox.sh rel
+```
+
+계측 코드는 `KAIROX_DUMP_ACTIVATION` 환경변수로만 켜지므로 별도 빌드 플래그 없이 평소와 같은
+release 빌드를 그대로 쓴다. 스위치가 꺼져 있으면(기본값) 계측 코드는 아예 실행되지 않는다.
+
+빌드 캐시(`build_rel/`)는 절대 경로를 기억하므로, 이전에 다른 경로(예: 호스트 vs 도커 컨테이너)에서
+설정한 적이 있으면 `CMakeCache.txt` 경로 충돌로 실패할 수 있다. 그런 경우:
+
+```bash
+rm -rf build_rel && bash compile_kairox.sh rel
+```
+
+### 3-2. 본인 환경 파악
+
+```bash
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader   # GPU 이름, 총 VRAM(MiB) 확인
+nproc                                                             # CPU 논리 스레드 수
+```
+
+이 두 값이 이후 단계의 `platform` 프로파일과 `vb` 후보 범위를 결정한다.
+
+### 3-3. `test_kairox.sh`에 본인 GPU 프로파일 추가
+
+`test_kairox.sh`의 `set_platform_defaults()`에 자신의 GPU 케이스가 이미 있는지 먼저 확인
+(현재 저장소에 정의된 프로파일: `3080ti`, `4090`, 그리고 `3080`/`3070` 중 하나). 없으면 아래처럼
+새 케이스를 추가한다:
+
+```bash
+    <my_gpu>)                     # 예: 4060ti
+        gpu_vram=<VRAM in GiB>    # 3-2에서 확인한 값을 1024로 나눠 GiB로 (내림)
+        threads=<nproc - 1>        # 호스트/시스템용으로 1코어는 반드시 남길 것 (AE 문서 규칙)
+        ;;
+```
+
+`gpu_vram`은 float 아닌 정수 GiB로 넣는다. 예: `nvidia-smi`가 `9872 MiB`로 나왔다면 `gpu_vram=9`
+로 안전하게 내려 잡거나, 여유 있으면 `gpu_vram=10`으로 반올림해도 되지만 이때는 아래 3-5에서
+높은 `vb`가 fit 단계에서 실패할 수 있으니 주의.
+
+### 3-4. 모델 준비 (필요 시 양자화)
+
+이 실험은 [ARTIFACTS_EVALUATION.md](ARTIFACTS_EVALUATION.md)에 따라 다운로드한 SPIF-GGUF 모델과
+그 짝인 sparkinfer model-split 파일 두 개가 필요하다.
+
+원본 `prosparse-llama-2-7b.gguf` (F16, 약 16 GiB)가 본인 GPU VRAM에 안 들어가면 Q8_0으로 재양자화한다.
+  이때 sparsity 예측기 텐서(`ffn_pred_*`)는 정확도 유지를 위해 **반드시 F16으로 남긴다**
+  (`--tensor-type ffn_pred=f16`):
+
+  ```bash
+  ./build_rel/bin/llama-quantize --tensor-type ffn_pred=f16 \
+    /root/SPIF-GGUF/prosparse-llama-2-7b.gguf \
+    /root/SPIF-GGUF/prosparse-llama-2-7b-Q8_0.gguf \
+    Q8_0
+  ```
+  결과 파일은 약 **9055 MiB (8.85 BPW)** 정도가 나와야 정상이다 (`ls -la`로 크기 확인).
+
+
+### 3-5. `vb` 스윕 — 본인 GPU에서 kairox가 이기는 지점 찾기
+
+`vb`(VRAM budget, GiB 단위)는 kairox/llama.cpp 양쪽에 동일하게 적용되는 GPU 메모리 예산이다.
+`vb=0`(무제한)이면 llama.cpp가 메모리를 다 써버려 비교 자체가 성립 안 하므로 반드시 제한을 걸어야
+하고, 정확한 값은 GPU/모델/컨텍스트 조합마다 달라서 **실측으로 찾아야 한다**.
+
+**총 VRAM의 대략 60~90% 구간을 스윕**하는 스크립트를 만들어 돌린다 (예: 10 GiB GPU면 `vb=6,7,8,9`):
+
+```bash
+cat > vb_sweep.sh <<'EOF'
+#!/bin/bash
+cd "$(dirname "$0")" || exit 1
+M=/root/SPIF-GGUF/prosparse-llama-2-7b-Q8_0.gguf
+MS=/root/SPIF-GGUF/prosparse-llama-2-7b-sparkinfer-model-split-688.gguf
+PLATFORM=<3-3에서 추가한 플랫폼 이름>
+OUT=vb_sweep_logs
+mkdir -p "$OUT"
+for vb in 6 7 8 9; do                              # ← 본인 VRAM의 60~90% 구간으로 조정
+    for backend in llama_cpp kairox; do
+        log="$OUT/${backend}__${PLATFORM}vb${vb}.log"
+        [[ -s "$log" ]] && { echo "skip  $log"; continue; }
+        args=("$backend" "$PLATFORM" kind=completion "vb=$vb" "model=$M" bench bench_runs=10)
+        [[ "$backend" != llama_cpp ]] && args+=("model_split=$MS")
+        bash test_kairox.sh "${args[@]}" >"$log" 2>&1
+        printf '%-10s vb=%s -> %s\n' "$backend" "$vb" \
+            "$(grep -m1 'decode mean' "$log" || echo 'NO SUMMARY')"
+    done
+done
+EOF
+bash vb_sweep.sh
+```
+
+출력 예시(3080 10 GiB, prosparse-llama-2-7b Q8_0):
+
+```
+llama_cpp  vb=6 ->   decode mean:    15.14 t/s
+kairox     vb=6 ->   decode mean:    51.29 t/s     ← kairox 3.39x 우위
+llama_cpp  vb=9 ->   decode mean:    81.65 t/s
+kairox     vb=9 ->   decode mean:    90.91 t/s     ← 여전히 이기지만 격차 1.11x로 축소
+```
+
+각 `vb`마다 `kairox`의 decode mean이 `llama_cpp`보다 큰지 확인하고, 격차가 가장 뚜렷한 (가장
+메모리가 빠듯한) 지점을 채택한다. 이 예에서는 `vb=6` 채택.
+
+### 3-6. 계측 켜서 본 실행
+
+3-5에서 정한 `<vb>`와 3-3에서 추가한 `<platform>` 이름을 넣어 아래 명령을 돌린다:
+
+```bash
+KAIROX_DUMP_ACTIVATION=1 \
+KAIROX_DUMP_ACTIVATION_PATH=./kairox_activation_dump.csv \
+  bash test_kairox.sh kairox <platform> kind=completion vb=<vb> \
+  model=/root/SPIF-GGUF/prosparse-llama-2-7b-Q8_0.gguf \
+  model_split=/root/SPIF-GGUF/prosparse-llama-2-7b-sparkinfer-model-split-688.gguf \
+  bench bench_runs=10
+```
+
+`KAIROX_DUMP_ACTIVATION_PATH`는 생략 가능 — 안 주면 현재 디렉터리의 `kairox_activation_dump.csv`에 쓴다.
+
+### 3-7. 결과 확인
+
+실행이 끝나면 로그 마지막 즈음에 `kairox_dump_activation_csv: wrote activation dump to '...'`가
+찍히고, 지정한 경로에 `layer,neuron,activation_count,resident_count,token_count,total_loads,wasted_loads`
+컬럼의 CSV가 생긴다. 전체 낭비율은 다음처럼 바로 계산할 수 있다:
+
+```bash
+awk -F, 'NR>1 { total+=$6; wasted+=$7 } END { printf "wasted-load rate: %.2f%%\n", wasted/total*100 }' \
+  kairox_activation_dump.csv
+```
+
+레이어별로 보고 싶으면:
+
+```bash
+awk -F, 'NR>1 { total[$1]+=$6; wasted[$1]+=$7 }
+         END { for (l in total) printf "layer %2d: %.2f%%\n", l, wasted[l]/total[l]*100 | "sort -n -k2" }' \
+  kairox_activation_dump.csv
+```
+
+## 4. 실험 결과 (요약)
+
+- **모델**: prosparse-llama-2-7b (Q8_0, 예측기만 F16), **설정**: `vb=6`, completion 모드, 10회 벤치
+- 두 개의 서로 다른 GPU에서 독립적으로 재현:
+
+| GPU | 총 VRAM | vb | 전체 로드 | 낭비된 로드 | **낭비율** |
+|---|---|---|---|---|---|
+| RTX 3070 | 8 GiB  | 6 | 8,806,112 | 4,576,507 | **51.97%** |
+| RTX 3080 | 10 GiB | 6 | (측정)     | (측정)     | **54.51%** |
+
+3070 기준 레이어별 세부값: 최선 layer 2 (31.6%), 최악 layer 0 (70.1%).
 
 동적으로 GPU에 리밸런싱된 스왑의 **절반 이상이 단 한 토큰도 기여하지 못하고 그대로 퇴출**됐다.
-레이어가 깊어질수록(캐시 예산이 상대적으로 빠듯해질수록) 낭비율도 대체로 증가하는 경향을 보였다.
+서로 다른 GPU에서 낭비율이 거의 같은 수준으로 나온다는 것은, 이 낭비가 특정 하드웨어의 우연이
+아니라 KAIROX의 **그룹 단위 캐싱 vs 뉴런 단위 게이팅** 구조 자체에서 나오는 일관된 현상임을
+시사한다. 레이어가 깊어질수록(캐시 예산이 상대적으로 빠듯해질수록) 낭비율도 대체로 증가하는
+경향을 보였다.
 
 
 ---
