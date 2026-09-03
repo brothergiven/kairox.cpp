@@ -5,10 +5,8 @@
 #include "llama-impl.h"
 #include "llama-model.h"
 
-#include <cstdio>
 #include <memory>
 #include <numeric>
-#include <string>
 
 static void kairox_encode_ptr(int32_t * op_params, size_t offset, const void * ptr) {
     memcpy(&op_params[offset], &ptr, sizeof(ptr));
@@ -40,59 +38,47 @@ ggml_tensor * kairox_layer_cache::build_reload_exec(ggml_context * ctx0, ggml_te
     return result;
 }
 
-/**
- *  @brief 모델의 레이어 캐시를 재로드하는 계획을 수립합니다.
- *
- */
+// Reload 전략을 수행한다. 이 때 가중치는 직접 옮기는게 아니라 메타 정보만을 옮김
+// 매 토큰 생성 시, 매 레이어마다 reload plan을 작성한다
 void kairox_layer_cache::kairox_reload_plan() {
-    float *   load_group_mask_data   = (float *) load_group_host->data;
-    float *   evict_group_mask_data  = (float *) evict_group_host->data;
-    float *   actual_group_mask_data = (float *) group_mask_host->data;
-    int32_t * slot_neuron_idx_data   = (int32_t *) neuron_idx_host->data;
-    int32_t * slot_of_group_data     = (int32_t *) group_maps->data;
-    int32_t * neuron_mask_data       = (int32_t *) neuron_mask->data;
+    float *   load_group_mask_data   = (float *) load_group_host->data;  // load 할 그룹의 mask 데이터, type: F32, 인덱스는 group 번호, 값은 0.0f 또는 1.0f
+    float *   evict_group_mask_data  = (float *) evict_group_host->data; // evict 할 그룹의 mask 데이터
+    float *   actual_group_mask_data = (float *) group_mask_host->data;  // 현재 GPU에 올라가있는 Group의 mask 데이터
+    int32_t * slot_neuron_idx_data   = (int32_t *) neuron_idx_host->data; // GPU 캐시에 올라가있는 뉴런 번호, 인덱스는 슬롯 번호, 값은 뉴런 번호
+    int32_t * slot_of_group_data     = (int32_t *) group_maps->data; // GPU 캐시에 올라가있는 그룹 번호, 인덱스는 그룹 번호, 값은 슬롯 번호
+    int32_t * neuron_mask_data       = (int32_t *) neuron_mask->data; // 해당 뉴런이 GPU 캐시에 올라가있는지 여부, 인덱스는 뉴런 번호, 값은 0 또는 1
     const int group_size             = cache_shape.group_size;
     const int n_groups               = cache_shape.n_groups;
     int       n_groups_to_load       = 0;
     int       n_groups_to_evict      = 0;
+
+    // 이미 load, evict 할 그룹은 결정된 상태에서 plan만을 작성한다
     for (int group = 0; group < n_groups; ++group) {
         if (load_group_mask_data[group]) {
             groups_to_load[n_groups_to_load++] = group;
         }
         if (evict_group_mask_data[group]) {
+            // groups_to_evict: layer_cache 구조체 내에 있는 std::vector, 인덱스에 해당하는 그룹을 evict할 예정임을 나타냄
             groups_to_evict[n_groups_to_evict++] = group;
         }
     }
     reload_count = 0;
-    GGML_ASSERT(n_groups_to_load == n_groups_to_evict);
+    GGML_ASSERT(n_groups_to_load == n_groups_to_evict); // 로드할 그룹과 evict할 그룹의 개수가 동일해야 함
     reload_planned_count        = n_groups_to_load;
     const int reload_budget     = std::clamp(dfr_clamp_k.load(), 1, cache_shape.n_cached_groups);
-    // 이번 스텝에 "실제로" 교체 가능한 쌍의 개수 — 계획된 개수(n_groups_to_load)와
-    // 백프레셔로 조절되는 예산(reload_budget) 중 작은 쪽. 예산이 모자라면 나머지는 다음 스텝으로 밀린다.
-    const int n_pairs_to_reload = std::min(n_groups_to_load, reload_budget);
+    const int n_pairs_to_reload = std::min(n_groups_to_load, reload_budget); // 로드할 그룹과 evict할 그룹의 개수 중 작은 값을 선택하여 reload할 그룹의 개수를 결정
 
-    for (int i = 0; i < n_pairs_to_reload; ++i) {
-        const int group_to_evict = groups_to_evict[i]; // evict 될 그룹
-        const int group_to_load  = groups_to_load[i]; // load 될 그룹
+    for (int i = 0; i < n_pairs_to_reload; ++i) { // 로드할 그룹과 evict할 그룹의 개수만큼 반복
+        const int group_to_evict = groups_to_evict[i]; // load, evict 시작
+        const int group_to_load  = groups_to_load[i];
+        // Eviction 할 그룹의 슬롯 번호를 가져옴, slot_of_group_data: GPU 캐시에 올라가있는 그룹 번호, 인덱스는 그룹 번호, 값은 슬롯 번호
         const int slot           = slot_of_group_data[group_to_evict];
 
-        if (k_kairox_dump_activation) { // 계측(KAIROX_DUMP_ACTIVATION)이 켜져 있을 때만 낭비 카운팅 수행
-            const int evict_base = group_to_evict * group_size; // evict 될 그룹의 시작 인덱스
-            const int load_base  = group_to_load * group_size; // load 될 그룹의 시작 인덱스
-            for (int k = 0; k < group_size; ++k) { // 그룹 내 뉴런들에 대해
-                const int en = evict_base + k; // evict 될 뉴런의 인덱스
-                if (!dbg_used_since_load[en]) { // 마지막으로 reload 이후 사용된 적이 없는 뉴런이라면
-                    ++dbg_wasted_loads[en];  // 로드된 뒤 단 한 번도 안 쓰이고 그대로 쫓겨남 → 낭비 1회 추가
-                }
-                const int ln = load_base + k; // load 될 뉴런의 인덱스
-                dbg_used_since_load[ln] = 0;  // 방금 새로 로드됐으니 "아직 안 씀" 상태로 리셋
-                ++dbg_total_loads[ln]; // 해당 뉴런이 reload 된 횟수 증가
-            }
-        }
-
+        // 해당 그룹에 해당하는 뉴런들의 Load 상태를 0으로 만들고, Load 할 그룹에 해당하는 뉴런들의 Load 상태를 1로 만듦
         memset(neuron_mask_data + group_to_evict * group_size, 0, sizeof(int32_t) * group_size);
         std::fill_n(neuron_mask_data + group_to_load * group_size, group_size, 1);
 
+        // base 주소를 계산하여 GPU 캐시에 올라가있는 뉴런들의 인덱스를 업데이트
         const int neuron_base = group_to_load * group_size;
         const int cache_base  = slot * group_size;
         for (int k = 0; k < group_size; ++k) {
@@ -104,6 +90,7 @@ void kairox_layer_cache::kairox_reload_plan() {
         actual_group_mask_data[group_to_evict] = 0.0f;
         actual_group_mask_data[group_to_load]  = 1.0f;
 
+        // 메타데이터 업데이트
         reload_plan[reload_count].group_idx = group_to_load;
         reload_plan[reload_count].slot_idx  = slot;
         ++reload_count;
@@ -152,7 +139,9 @@ void kairox_init_from_model_and_ctx(struct llama_model *   tgt_model,
     tgt_ctx->kairox_cm = std::make_unique<kairox_cache_manager>(tgt_model, kairox_ms_path, vram_budget);
 }
 
-// constructor.
+/**
+ * kairox_cache_manager의 생성자
+ */
 kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kairox_ms_path, int64_t vram_budget) {
     ggml_context *   ctx_meta    = nullptr;
     gguf_init_params gguf_params = {
@@ -215,6 +204,7 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
             break;
         }
     }
+    // group 의 개수를 1024개 이하로 설정하는 것을 권장함.
     GGML_ASSERT(n_group <= 1024 && "Recommended: n_group <= 1024 for faster DFR processing");
 
     auto create_tensor = [&](ggml_context * ctx, ggml_type type, std::vector<int64_t> ne, int il, const char * name) {
@@ -224,8 +214,9 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
         return ggml_set_name(tensor_meta, tensor_name);
     };
 
+    // il : layer index
     for (int il = 0; il < n_layer; ++il) {
-        auto * lc = layer_caches[il] = new kairox_layer_cache();
+        auto * lc = layer_caches[il] = new kairox_layer_cache(); // layer 마다 layer cache 구조체 생성
         lc->cache_shape              = {
             /*.n_neurons        = */ (int) n_ff,
             /*.n_cached_neurons = */ (int) n_group_cache[il] * n_ffn_group,
@@ -238,16 +229,8 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
         lc->groups_to_evict.resize(lc->cache_shape.n_groups);
         lc->dfr_clamp_k.store(lc->cache_shape.n_cached_groups);
         lc->gpu_only = (lc->cache_shape.n_cached_neurons == lc->cache_shape.n_neurons);
-        // 계측이 켜져 있을 때만 뉴런 개수만큼 카운터 배열을 할당한다 — 꺼져 있으면 벡터가 비어 있어
-        // 메모리도, 실행 시간도 전혀 추가로 들지 않는다.
-        if (k_kairox_dump_activation) {
-            lc->dbg_activation_count.assign(lc->cache_shape.n_neurons, 0);   // 뉴런별 활성화 카운트 초기화
-            lc->dbg_resident_count.assign(lc->cache_shape.n_neurons, 0);    // 뉴런별 상주 카운트 초기화
-            lc->dbg_used_since_load.assign(lc->cache_shape.n_neurons, 0);   // "아직 안 씀" 상태로 초기화
-            lc->dbg_total_loads.assign(lc->cache_shape.n_neurons, 0);      // 뉴런별 로드 횟수 초기화
-            lc->dbg_wasted_loads.assign(lc->cache_shape.n_neurons, 0);     // 뉴런별 낭비 횟수 초기화
-        }
 
+        // FFN 가중치 값을 layer_cache에 저장
         lc->ffn_pred_up     = layers[il].ffn_pred_up;
         lc->ffn_pred_down   = layers[il].ffn_pred_down;
         lc->ffn_pred_up_b   = layers[il].ffn_pred_up_b;
@@ -424,41 +407,7 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
                    ggml_backend_buffer_get_size(buf_gpu) / (1024.0 * 1024.0));
 }
 
-// 계측 결과(뉴런별 카운터 5종)를 CSV 한 장으로 덤프한다. 경로는 KAIROX_DUMP_ACTIVATION_PATH
-// 환경변수로 지정할 수 있고, 안 주면 현재 작업 디렉터리의 kairox_activation_dump.csv에 쓴다.
-static void kairox_dump_activation_csv(const std::vector<kairox_layer_cache *> & layer_caches) {
-    const char * path_env = getenv("KAIROX_DUMP_ACTIVATION_PATH");
-    const std::string path = path_env ? path_env : "kairox_activation_dump.csv";
-
-    FILE * f = fopen(path.c_str(), "w");
-    if (!f) {
-        LLAMA_LOG_WARN("%s: failed to open '%s' for writing activation dump\n", __func__, path.c_str());
-        return;
-    }
-
-    fprintf(f, "layer,neuron,activation_count,resident_count,token_count,total_loads,wasted_loads\n");
-    for (size_t il = 0; il < layer_caches.size(); ++il) {
-        const auto * lc = layer_caches[il];
-        if (lc->dbg_token_count == 0) {
-            continue;  // 계측이 아예 켜지지 않았거나, 이 레이어에서 RELOAD_PLAN이 한 번도 안 돈 경우
-        }
-        for (int n = 0; n < lc->cache_shape.n_neurons; ++n) {
-            // 뉴런 하나당 한 줄 — layer,neuron,activation_count,resident_count,token_count,total_loads,wasted_loads
-            fprintf(f, "%zu,%d,%u,%u,%llu,%llu,%llu\n", il, n, lc->dbg_activation_count[n],
-                    lc->dbg_resident_count[n], (unsigned long long) lc->dbg_token_count,
-                    (unsigned long long) lc->dbg_total_loads[n], (unsigned long long) lc->dbg_wasted_loads[n]);
-        }
-    }
-    fclose(f);
-    LLAMA_LOG_INFO("%s: wrote activation dump to '%s'\n", __func__, path.c_str());
-}
-
 kairox_cache_manager::~kairox_cache_manager() {
-    // 계측이 켜져 있었다면, layer_caches가 아직 살아있는(delete되기 전) 이 시점에 결과를 먼저 CSV로 저장한다.
-    if (k_kairox_dump_activation) {
-        kairox_dump_activation_csv(layer_caches);
-    }
-
     for (auto * const lc : layer_caches) {
         delete lc;
     }

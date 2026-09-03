@@ -2668,6 +2668,7 @@ static void kairox_batch_reload(char *        weight_base,
     CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
+// 실제 뉴런 reload가 발생하는 시점
 static void ggml_cuda_reload_exec(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
     auto   kairox_wt = (kairox_weight_type) dst->op_params[0];
     auto * kairox_lc = kairox_decode_ptr<kairox_layer_cache>(dst->op_params, 1);

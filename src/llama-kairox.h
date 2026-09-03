@@ -3,6 +3,9 @@
 #include "ggml-kairox.hpp"
 #include "llama.h"
 
+/**
+ * @brief 캐시 관리 정책을 실제로 수행하는 구조체
+ */
 struct kairox_cache_manager {
     std::vector<kairox_layer_cache *> layer_caches;
     std::vector<ggml_tensor *>            reorder_perms;

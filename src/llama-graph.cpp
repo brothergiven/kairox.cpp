@@ -1298,20 +1298,36 @@ void llm_graph_context::build_sparse_ffn_dfr(kairox_layer_cache * lc,
                                              float                    threshold,
                                              int                      il) const {
     ggml_tensor * mask = ggml_shifted_step(ctx0, lc->sparse_idx, -threshold, false);
+    // sparse_idx는 predictor의 sigmoid 출력. 0.5보다 크면 1, 아니면 0으로 mask를 만든다.
     if (lc->sparse_idx->ne[1] > 1) {
         mask = ggml_sum_cols(ctx0, mask);
     }
+
+    /**
+     * 각 뉴런에 대한 DFR(EMA) 점수 업데이트. scale_add 함수는 텐서에 어떤 값을 곱한 다음 bias를 더하는 api.
+     * dfr_scores = dfr_scores * dfr_ema_coeffs + deltas
+     * 논문의 EMA 수식은 EMA_COEF * prev_score + (1 - EMA_COEF) * (0 or 1, 뉴런이 활성화 되었다면 1)
+     * 따라서 delta 값은 뉴런이 활성화 되었다면 1, 아니면 0이 되도록 전처리하여 계산
+     */
     ggml_tensor * deltas = ggml_transpose(
         ctx0, ggml_sum_rows(ctx0, ggml_reshape_2d(ctx0, mask, lc->cache_shape.group_size, lc->cache_shape.n_groups)));
     ggml_tensor * dfr_scores = ggml_scale_add(ctx0, lc->dfr_scores, deltas, (float *) lc->dfr_ema_coeffs->data,
                                               (float) lc->sparse_idx->ne[1] * lc->cache_shape.group_size, true);
+    // 계산된 DFR 점수에 따라 top-k 뉴런을 선택. argsort() API 사용 !
     ggml_tensor * topk_idx   = ggml_argsort_top_k(ctx0, dfr_scores, lc->cache_shape.n_cached_groups);
+    // top-k 뉴런에 대한 마스크 생성
     ggml_tensor * topk_mask  = ggml_sum_cols(ctx0, ggml_get_rows(ctx0, kairox_cm->group_identity, topk_idx));
+
+    // 대칭 차집합. GPU에 있는 뉴런의 경우 top-k에 포함되지 않으면 evict, top-k에 포함되면 load, CPU에 있는 뉴런의 경우 top-k에 포함되면 load, top-k에 포함되지 않으면 evict
+    // 이를 XOR 연산으로 하나로 표현함.
     ggml_tensor * diff_mask  = ggml_xor(ctx0, lc->group_mask, topk_mask);
 
+    // load group tensor 완성
     load_group = ggml_and(ctx0, topk_mask, diff_mask);
     cb(load_group, "ffn_load_group", il);
     ggml_build_forward_expand(gf, load_group);
+
+    // evict group tensor 완성
     evict_group = ggml_and(ctx0, lc->group_mask, diff_mask);
     cb(evict_group, "ffn_evict_group", il);
     ggml_build_forward_expand(gf, evict_group);

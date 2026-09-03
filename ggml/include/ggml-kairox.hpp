@@ -50,15 +50,9 @@ const bool  k_enable_kairox_parallel       = get_env_bool("KAIROX_PARALLEL", fal
 const float k_kairox_lambda_init           = get_env_float("KAIROX_DFR_LAMBDA_INIT", 0.67f);
 const float k_kairox_dfr_lambda_adapt_rate = get_env_float("KAIROX_DFR_LAMBDA_ADAPT_RATE", 0.05f);
 
-// 디버그 전용: 뉴런별 "예측 활성화 횟수 / 캐시 상주 횟수"를 누적하고(ggml-cuda.cu의
-// ggml_cuda_reload_plan 참고), 프로세스 종료 시 CSV로 덤프하기 위한 전역 On/Off 스위치.
-// 기본값 false이므로 평소 벤치마크에는 전혀 영향을 주지 않는다.
-const bool  k_kairox_dump_activation        = get_env_bool("KAIROX_DUMP_ACTIVATION", false);
-
 /**
- * @brief FFN 의 weight 를 GPU 로 offload 하고, activation cache 를 GPU 에 유지할 때 사용되는 구조체.
- *        이 구조체 하나가 모델의 레이어 하나에 대응하며, 어떤 뉴런이 GPU에 캐시돼 있는지,
- *        레이어별 predictor 텐서, reload(교체) 진행 상태 등을 전부 들고 있다.
+ * 캐시 관리 정책을 실제로 수행하는 구조체
+ * 각 레이어마다 하나씩 존재하며 , 레이어의 FFN 가중치를 메모리로 로드하고
  */
 struct kairox_layer_cache {
     ggml_tensor * ffn_pred_up     = nullptr;
@@ -86,9 +80,12 @@ struct kairox_layer_cache {
     ggml_tensor * reload_gate = nullptr;
     ggml_tensor * reload_down = nullptr;
 
+    // Host-side tensors for managing reload plans and execution
+    // 전부 인덱스: 그룹 번호, 값 = 0.0f 또는 1.0f 인 비트
     ggml_tensor * load_group_host  = nullptr;
     ggml_tensor * evict_group_host = nullptr;
-    ggml_tensor * group_mask_host  = nullptr;
+    ggml_tensor * group_mask_host  = nullptr; // 현재 GPU에 올라간 그룹을 나타내는 비트 벡터, 교체가 발생하면 0->1, 1->0으로 바뀜
+    // mask 형태를 사용하는 이유가 Sparse Matrix Multiply를 그대로 사용하기 위해서임, 즉, Sparse Matrix Multiply를 수행할 때, mask가 1인 그룹만을 사용하여 Multiply를 수행함
     ggml_tensor * neuron_idx_host  = nullptr;
     ggml_tensor * dfr_ema_coeffs   = nullptr;
 
@@ -99,24 +96,7 @@ struct kairox_layer_cache {
     std::atomic<int>         dfr_clamp_k = 0;
     bool                     gpu_only    = false;
 
-    // 디버그 전용 카운터 — KAIROX_DUMP_ACTIVATION=1일 때만 ggml_cuda_reload_plan()에서 채워진다.
-    // (시간 가중 지표) 뉴런 n이 "얼마나 자주 필요했는지" / "얼마나 자주 캐시에 있었는지"를 잰다.
-    // 배열 크기는 처음 쓸 때 cache_shape.n_neurons로 맞춰짐, 인덱스 n = 이 레이어 안에서의 뉴런 번호.
-    std::vector<uint32_t> dbg_activation_count; // [뉴런] 예측기 점수가 임계값 이상이었던 토큰 수 (캐시 여부 무관)
-    std::vector<uint32_t> dbg_resident_count;   // [뉴런] 실제로 GPU 캐시에 상주해 있었던 토큰 수
-    uint64_t              dbg_token_count = 0;  // 이 레이어에서 위 두 카운터가 관측한 총 토큰 수 (분모)
-
-    // 디버그 전용 — (이벤트 가중 지표) "로드-퇴출 한 사이클" 단위로 낭비 여부를 추적한다.
-    // dbg_used_since_load[n]은 뉴런 n이 속한 그룹이 동적으로 reload되어 GPU에 올라오는 순간 0으로
-    // 리셋되고, 그 뒤 "GPU에 상주 + 예측기 활성화"로 한 번이라도 관측되면(ggml-cuda.cu의
-    // kairox_dump_activation_counts()) 1로 바뀐다. 만약 뉴런의 그룹이 여전히 0인 채로 다시
-    // 퇴출(evict)되면, 그 로드는 완전히 낭비된 것이다 — 단 한 토큰도 기여하지 못하고 쫓겨났다는 뜻.
-    // 주의: 생성자에서 하는 최초 정적 캐시 채움은 "로드"로 세지 않는다 — 동적 reload 스왑만 센다.
-    std::vector<uint8_t>  dbg_used_since_load; // [뉴런] 마지막으로 로드된 이후 한 번이라도 사용됐는가? (0/1)
-    std::vector<uint64_t> dbg_total_loads;     // [뉴런] 동적으로 GPU에 로드된 누적 횟수
-    std::vector<uint64_t> dbg_wasted_loads;    // [뉴런] 그중 "한 번도 안 쓰이고 그대로 퇴출된" 낭비 횟수
-
-    size_t reload_count         = 0;
+    size_t reload_count         = 0; // Reload Count가 구조체 내에 존재한다(해당 Layer가 Reload Plan을 수행한 횟수)
     size_t reload_planned_count = 0;
     size_t reload_window_size   = 4;
 
