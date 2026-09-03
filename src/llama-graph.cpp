@@ -1308,18 +1308,33 @@ void llm_graph_context::build_sparse_ffn_dfr(kairox_layer_cache * lc,
      * dfr_scores = dfr_scores * dfr_ema_coeffs + deltas
      * 논문의 EMA 수식은 EMA_COEF * prev_score + (1 - EMA_COEF) * (0 or 1, 뉴런이 활성화 되었다면 1)
      * 따라서 delta 값은 뉴런이 활성화 되었다면 1, 아니면 0이 되도록 전처리하여 계산
+     * EMA_COEF 값은 논문의 수식 상 lambda
      */
     ggml_tensor * deltas = ggml_transpose(
         ctx0, ggml_sum_rows(ctx0, ggml_reshape_2d(ctx0, mask, lc->cache_shape.group_size, lc->cache_shape.n_groups)));
     ggml_tensor * dfr_scores = ggml_scale_add(ctx0, lc->dfr_scores, deltas, (float *) lc->dfr_ema_coeffs->data,
                                               (float) lc->sparse_idx->ne[1] * lc->cache_shape.group_size, true);
-    // 계산된 DFR 점수에 따라 top-k 뉴런을 선택. argsort() API 사용 !
-    ggml_tensor * topk_idx   = ggml_argsort_top_k(ctx0, dfr_scores, lc->cache_shape.n_cached_groups);
-    // top-k 뉴런에 대한 마스크 생성
+    /**
+    * 논문 알고리즘에는 One-Hit Wonder 현상을 막기 위해서 tau 값을 주고있다.
+    * One-Hit Wonder 현상은 어떤 뉴런이 한 번만 활성화되었는데, EMA 값은 높게 나와서 계속 top-k에 포함되는 현상이다.
+    * 따라서 이를 방지하기 위해 첫 번째로 활성화된 경우의 EMA 값
+    * 즉 (1 - EMA_COEF) + epsilon 을 threshold로 설정하여 top-k에 포함되었더라도 EMA 값이 threshold보다 Load 시키지 않도록 한다.
+    */
+
+    /**
+     * 지금의 tau 필터링은 그룹 단위로 수행되고 있다. 이걸 사실 뉴런 단위로 해야하는 것 아닌가? 
+     */
+    const float tau = (1.0f - *(float *) lc->dfr_ema_coeffs->data) + 1e-6f;
+    // mask 값이 0이면 topk에 포함되지 않도록
+    ggml_tensor * threshold_mask = ggml_shifted_step(ctx0, dfr_scores, -tau, false);
+    ggml_tensor * filtered_dfr_scores = ggml_mul(ctx0, dfr_scores, threshold_mask);
+
+    // 계산된 DFR 점수에 따라 top-k 그룹을 선택. argsort() API 사용 !
+    // 이 때 k 값은 VRAM capacity이다, 즉 존재하는 그룹들 중 DFR Score에 따라 top k 그룹들이 VRAM으로 load 되는 것
+    ggml_tensor * topk_idx   = ggml_argsort_top_k(ctx0, filtered_dfr_scores, lc->cache_shape.n_cached_groups);
+    // top-k 그룹에 대한 마스크 생성
     ggml_tensor * topk_mask  = ggml_sum_cols(ctx0, ggml_get_rows(ctx0, kairox_cm->group_identity, topk_idx));
 
-    // 대칭 차집합. GPU에 있는 뉴런의 경우 top-k에 포함되지 않으면 evict, top-k에 포함되면 load, CPU에 있는 뉴런의 경우 top-k에 포함되면 load, top-k에 포함되지 않으면 evict
-    // 이를 XOR 연산으로 하나로 표현함.
     ggml_tensor * diff_mask  = ggml_xor(ctx0, lc->group_mask, topk_mask);
 
     // load group tensor 완성
