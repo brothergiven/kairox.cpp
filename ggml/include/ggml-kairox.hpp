@@ -47,8 +47,9 @@ inline bool get_env_bool(const char * env, bool default_value) {
 }
 
 const bool  k_enable_kairox_parallel       = get_env_bool("KAIROX_PARALLEL", false);
-const float k_kairox_lambda_init           = get_env_float("KAIROX_DFR_LAMBDA_INIT", 0.67f);
+const float k_kairox_lambda_init           = get_env_float("KAIROX_DFR_LAMBDA_INIT", 0.67f); // lambda 초기 값
 const float k_kairox_dfr_lambda_adapt_rate = get_env_float("KAIROX_DFR_LAMBDA_ADAPT_RATE", 0.05f);
+const bool k_kairox_dump_activation        = get_env_bool("KAIROX_DUMP_ACTIVATION", false); // 환경변수로 activation 계측 할 건지 결정.
 
 /**
  * 캐시 관리 정책을 실제로 수행하는 구조체
@@ -96,6 +97,26 @@ struct kairox_layer_cache {
     std::atomic<int>         dfr_clamp_k = 0;
     bool                     gpu_only    = false;
 
+    /**
+     * 뉴런별 디버그 전용 배열. 크기 : n_neurons
+     * 1. Activation Count : 해당 Layer에서 Activation 된 횟수, INT64
+     * 2. Resident Count : 해당 Layer에서 GPU에 올라간 뉴런의 개수, INT64
+     * 3. Use Count : 해당 Layer에서 GPU에 올라간 뉴런이 실제로 사용된 횟수, INT64
+     * 4. Total Loads : 해당 뉴런이 Reload 된 횟수, INT64
+     * 5. Wasted Loads : 해당 뉴런이 Reload 되었지만 실제로 사용되지 않은 횟수, INT64
+     * 6. Used Since Load: 해당 뉴런이 Load 되고 나서 사용되었는지 플래그, INT8
+     *
+     * 최종 얻고자 하는 데이터
+     * 1. Layer별 (Resident && Active) / (Resident), 즉 상주하던 뉴런 중 활성화 된 counts
+     * 2. Layer별 (Resident && Active) / (Active), 즉 활성화된 뉴런 중 상주 하던 counts
+     * 3. Wasted Reload : (Wasted) / (Total)
+     */
+    std::vector<uint64_t> dbg_activation_count;
+    std::vector<uint64_t> dbg_resident_count;
+    std::vector<uint64_t> dbg_hit_count;
+    std::vector<uint64_t> dbg_total_loads;
+    std::vector<uint64_t> dbg_wasted_loads;
+    std::vector<uint8_t> dbg_used_since_load; //
     size_t reload_count         = 0; // Reload Count가 구조체 내에 존재한다(해당 Layer가 Reload Plan을 수행한 횟수)
     size_t reload_planned_count = 0;
     size_t reload_window_size   = 4;

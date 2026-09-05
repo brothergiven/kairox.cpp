@@ -5,6 +5,8 @@
 #include "llama-impl.h"
 #include "llama-model.h"
 
+#include <string>
+#include <cstdio>
 #include <memory>
 #include <numeric>
 
@@ -74,6 +76,26 @@ void kairox_layer_cache::kairox_reload_plan() {
         // Eviction 할 그룹의 슬롯 번호를 가져옴, slot_of_group_data: GPU 캐시에 올라가있는 그룹 번호, 인덱스는 그룹 번호, 값은 슬롯 번호
         const int slot           = slot_of_group_data[group_to_evict];
 
+        if (k_kairox_dump_activation) {
+            // 스왑 직전 해당 시점에 Evict 될 그룹, Load 될 그룹의 계측 기록.
+            // Load 될 그룹에 대해 Total Load + 1 , Use Count 0으로 초기화
+            // Evict 될 그룹에 대해 Wasted Load였는지 검사.
+            const int evict_base = group_to_evict * group_size; // evict 될 그룹의 시작 뉴런 인덱스
+            const int load_base = group_to_load * group_size;   // load 될 그룹의 시작 뉴런 인덱스
+
+            for (int k = 0; k < group_size; k++) {
+                // evict 되는 뉴런에 대한 wasted neuron count.
+                const int en = evict_base + k; // evicted neuron
+                if (dbg_total_loads[en] > 0 && !dbg_used_since_load[en]) {
+                    ++dbg_wasted_loads[en]; // 사용되지 않았다면 wasted load
+                }
+
+                // load 되는 뉴런에 대한 initialization.
+                const int ln = load_base + k; // loaded neuron
+                dbg_used_since_load[ln] = 0;
+                ++dbg_total_loads[ln];
+            }
+        }
         // 해당 그룹에 해당하는 뉴런들의 Load 상태를 0으로 만들고, Load 할 그룹에 해당하는 뉴런들의 Load 상태를 1로 만듦
         memset(neuron_mask_data + group_to_evict * group_size, 0, sizeof(int32_t) * group_size);
         std::fill_n(neuron_mask_data + group_to_load * group_size, group_size, 1);
@@ -230,6 +252,15 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
         lc->dfr_clamp_k.store(lc->cache_shape.n_cached_groups);
         lc->gpu_only = (lc->cache_shape.n_cached_neurons == lc->cache_shape.n_neurons);
 
+        // 계측 플래그 on일 때
+        if (k_kairox_dump_activation) {
+            lc->dbg_activation_count.assign(lc->cache_shape.n_neurons, 0);
+            lc->dbg_resident_count.assign(lc->cache_shape.n_neurons, 0);
+            lc->dbg_hit_count.assign(lc->cache_shape.n_neurons, 0);
+            lc->dbg_total_loads.assign(lc->cache_shape.n_neurons, 0);
+            lc->dbg_wasted_loads.assign(lc->cache_shape.n_neurons, 0);
+            lc->dbg_used_since_load.assign(lc->cache_shape.n_neurons, 0);
+        }
         // FFN 가중치 값을 layer_cache에 저장
         lc->ffn_pred_up     = layers[il].ffn_pred_up;
         lc->ffn_pred_down   = layers[il].ffn_pred_down;
@@ -407,7 +438,58 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
                    ggml_backend_buffer_get_size(buf_gpu) / (1024.0 * 1024.0));
 }
 
+// 종료 시점에 아직 상주 중인 뉴런은 evict 를 거치지 않아 wasted 판정이 누락된다. 마지막으로 한 번 훑는다.
+static void kairox_dump_flush_resident(kairox_layer_cache * lc) {
+    const auto * resident = (const int32_t *) lc->neuron_mask->data;
+    for (int n = 0; n < lc->cache_shape.n_neurons; ++n) {
+        if (resident[n] && lc->dbg_total_loads[n] > 0 && !lc->dbg_used_since_load[n]) {
+            lc->dbg_wasted_loads[n] += 1;
+        }
+    }
+}
+// Activation 계측 결과를 CSV로 저장
+static void kairox_dump_activation_csv(const std::vector<kairox_layer_cache *>  &layer_caches) {
+    const char* path_env = getenv("KAIROX_DUMP_ACTIVATION_PATH");
+    const std::string path = path_env ? path_env : "kairox_activation.csv";
+
+    FILE *f = fopen(path.c_str(), "w");
+    if (!f) {
+        LLAMA_LOG_WARN("%s: failed to open '%s' for writing activation dump\n", __func__, path.c_str());
+        return;
+    }
+
+    fprintf(f, "layer,neuron,activation_count,resident_count,hit_count,total_loads,wasted_loads\n");
+
+    for (size_t il = 0; il < layer_caches.size(); ++il) {
+        auto* lc = layer_caches[il];
+
+        kairox_dump_flush_resident(lc);
+
+        for (int n = 0; n < lc->cache_shape.n_neurons; n++) {
+            // 뉴런 하나 당 한 줄로 write
+            fprintf(f,
+                "%zu,%d,%llu,%llu,%llu,%llu,%llu\n",
+                il,
+                n,
+                (unsigned long long) lc->dbg_activation_count[n],
+                (unsigned long long) lc->dbg_resident_count[n],
+                (unsigned long long) lc->dbg_hit_count[n],
+                (unsigned long long) lc->dbg_total_loads[n],
+                (unsigned long long) lc->dbg_wasted_loads[n]
+            );
+        }
+
+    }
+    fclose(f);
+    LLAMA_LOG_INFO("%s: wrote activation dump to '%s'\n", __func__, path.c_str());
+}
+
+
+
 kairox_cache_manager::~kairox_cache_manager() {
+    if (k_kairox_dump_activation) {
+        kairox_dump_activation_csv(layer_caches);
+    }
     for (auto * const lc : layer_caches) {
         delete lc;
     }
