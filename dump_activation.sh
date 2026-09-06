@@ -28,7 +28,11 @@ usage: [PLATFORM=3070] [VB=N] [N=512] [OUT=path.csv] [MODEL_DIR=dir] [PROMPT_FIL
   VB          VRAM Budget
   N           estimated # of generated tokens
   OUT         output path of csv file
-  MODLE_DIR   directory of model file(.gguf)
+  MODEL_DIR   directory of model file(.gguf)
+  MODEL       path of base model .gguf (overrides MODEL_DIR default)
+  MODEL_SPLIT path of model-split .gguf (overrides MODEL_DIR default)
+  BIN         path of prebuilt llama-completion (skips local build_rel)
+  IGNORE_EOS  1 = generate exactly N tokens (fixes run length for comparisons)
   PROMPT_FILE path of prompt file
 EOF
   exit 1
@@ -58,13 +62,22 @@ esac
 vb=${VB:-$vb_default}
 
 model_dir=${MODEL_DIR:-$HOME/SPIF-GGUF}
-model=$model_dir/prosparse-llama-2-7b-Q8_0.gguf
-model_split=$model_dir/prosparse-llama-2-7b-sparkinfer-model-split-688.gguf
+model=${MODEL:-$model_dir/prosparse-llama-2-7b-Q8_0.gguf}
+model_split=${MODEL_SPLIT:-$model_dir/prosparse-llama-2-7b-sparkinfer-model-split-688.gguf}
 
 max_tokens=${N:-512}
 ctx_size=1024
 seed=42
 csv=${OUT:-$repo_root/kairox_activation.csv}
+
+# IGNORE_EOS=1 이면 EOS 를 무시하고 정확히 N 토큰을 생성한다.
+# group_size 를 바꿔가며 비교할 때는 런마다 생성 길이가 달라지면 지표가 오염되므로 켜야 한다
+# (README 5-6). 다만 텍스트 자체의 발산은 이것으로 막히지 않는다.
+ignore_eos=${IGNORE_EOS:-0}
+
+# 조건부 인자는 배열에 담아 넘긴다. 빈 배열은 "${arr[@]}" 로 펼치면 인자 0개가 되어 안전하다.
+eos_args=()
+[[ "$ignore_eos" == 1 ]] && eos_args=(--ignore-eos)
 
 # -n "$X" : 문자열이 비어있지 않다면  참
 # ${PROMPT_FILE:-} 는 PROMPT_FILE이 존재하지 않으면 빈 문자열을 반환함
@@ -80,7 +93,10 @@ fi
 
 die() { echo "error: $*" >&2; exit 1; }
 
-bin=$repo_root/build_rel/bin/llama-completion
+# BIN 을 주면 다른 클론에 이미 빌드된 바이너리를 그대로 쓴다.
+# group_size 는 model-split GGUF 에서 런타임에 읽으므로 스윕에 재빌드가 필요 없고,
+# 같은 바이너리를 재사용해야 baseline 과 조건이 정확히 일치한다.
+bin=${BIN:-$repo_root/build_rel/bin/llama-completion}
 
 #   -x : 실행 가능한 파일로 존재하는가
 #   -f : 일반 파일로 존재하는가
@@ -102,7 +118,8 @@ bin=$repo_root/build_rel/bin/llama-completion
 #   for 변수 in 목록; do ... done  : 파이썬의 for x in [...] 과 같다
 #   A -nt B : A 가 B 보다 최신인가 (newer than, 수정시각 비교)
 #   && 이므로 조건이 참일 때만 echo 가 실행된다
-for src in ggml/src/ggml-cuda/ggml-cuda.cu src/llama-kairox.cpp ggml/include/ggml-kairox.hpp; do
+for src in ${BIN:+} ggml/src/ggml-cuda/ggml-cuda.cu src/llama-kairox.cpp ggml/include/ggml-kairox.hpp; do
+    [[ -n "${BIN:-}" ]] && break
     [[ "$repo_root/$src" -nt "$bin" ]] &&
         echo "warning: $src 가 바이너리보다 최신 — 재빌드 필요할 수 있음" >&2
 done
@@ -156,7 +173,8 @@ env \
     -c "$ctx_size" \
     -n "$max_tokens" \
     -p "$prompt" \
-    --no-warmup
+    --no-warmup \
+    "${eos_args[@]}"
 
 # $? = 직전 명령어의 종료 코드 (0 이면 성공).
 # 반드시 바로 다음 줄에서 받아야 한다. 중간에 echo 하나만 끼어도

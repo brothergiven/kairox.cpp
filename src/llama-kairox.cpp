@@ -226,8 +226,17 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
             break;
         }
     }
-    // group 의 개수를 1024개 이하로 설정하는 것을 권장함.
-    GGML_ASSERT(n_group <= 1024 && "Recommended: n_group <= 1024 for faster DFR processing");
+    // 원래 여기에 GGML_ASSERT(n_group <= 1024) 가 있었으나, 결정 단위(group_size) 스윕을 위해
+    // 경고로 완화했다. 1024 는 기술적 한계가 아니다 — ggml_argsort_top_k 는 ncols > 1024 일 때
+    // CUB device-wide sort 로 폴백한다(top-k.cu:81, GGML_CUDA_USE_CUB 는 CUDART >= 11.7 에서 정의).
+    //
+    // 실제 제약은 group_identity 가 n_group x n_group F32 라는 점이다(아래 create_tensor 참조).
+    // n_ff=11008 기준 group_size=4 는 30 MiB, 2 는 121 MiB, 1 은 485 MiB 로 커진다.
+    if (n_group > 1024) {
+        LLAMA_LOG_WARN("%s: n_group=%d > 1024 — DFR top-k 가 CUB 경로로 폴백하고 "
+                       "group_identity 가 %.1f MiB 를 차지한다\n",
+                       __func__, n_group, n_group * (double) n_group * 4 / (1024 * 1024));
+    }
 
     auto create_tensor = [&](ggml_context * ctx, ggml_type type, std::vector<int64_t> ne, int il, const char * name) {
         char tensor_name[GGML_MAX_NAME];
