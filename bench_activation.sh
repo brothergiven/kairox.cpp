@@ -31,10 +31,14 @@ usage: [VAR=값 ...] bash bench_activation.sh [simple|full]
   BACKENDS      lambda 프로파일 목록      (기본 "kairox neuralink")
   GROUP_SIZES   group_size 목록           (기본 "16" = split-688)
 
+프롬프트 (bench_models.sh 와 같은 prompts.txt 집합을 기본으로 쓴다)
+  PROMPT_FILE   프롬프트 집합 파일        (기본 ./prompts.txt)
+  BENCH_RUNS    조합당 프롬프트 개수      (기본 5, simple 은 2)
+
 기타
   MODEL_DIR     모델 디렉터리             (기본 $HOME/SPIF-GGUF 또는 /root/SPIF-GGUF)
   MODEL         본 모델 .gguf
-  N             생성 토큰 수              (기본 512)
+  N             프롬프트당 생성 토큰 수   (기본 512)
   REPEAT        조합당 반복 횟수          (기본 1)
   OUT_DIR       결과 디렉터리             (기본 ./activation_logs)
   REBUILD       1 이면 build_rel 지우고 새로 빌드
@@ -79,11 +83,13 @@ if [[ "$run_mode" == "simple" ]]; then
     vbs=${VBS:-"6"}
     backends=${BACKENDS:-"kairox"}
     group_sizes=${GROUP_SIZES:-"16"}
+    bench_runs=${BENCH_RUNS:-2}
     bench_group=simple_validation
 else
     vbs=${VBS:-"4 5 6 7 8"}
     backends=${BACKENDS:-"kairox neuralink"}
     group_sizes=${GROUP_SIZES:-"16"}
+    bench_runs=${BENCH_RUNS:-5}
     bench_group=activation_profile
 fi
 
@@ -98,8 +104,10 @@ summary_csv=$out_dir/activation_summary.csv
 # dump_activation.sh 는 환경변수로 설정을 받는다. 여기서 export 해두면
 # 루프 안에서는 조합마다 달라지는 값(BACKEND/VB/...)만 넘기면 된다.
 export N=$max_tokens
+export BENCH_RUNS=$bench_runs      # prompts.txt 에서 앞에서부터 이만큼을 돌린다
 export IGNORE_EOS=${IGNORE_EOS:-1} # 런마다 토큰 수가 달라지면 카운터 비교가 오염된다
 export SUMMARY=0                   # 조합별 요약은 이 스크립트가 마지막에 한 번에 낸다
+[[ -n "${PROMPT_FILE:-}" ]] && export PROMPT_FILE
 
 # -----------------------------------------------------------------------------
 # 준비: 빌드 / 모델 확인
@@ -145,6 +153,7 @@ echo " model       : $model_name"
 echo " backends    : $backends"
 echo " vb          : $vbs"
 echo " group_size  : $group_sizes"
+echo " prompt      : ${PROMPT_FILE:-prompts.txt} x ${bench_runs}런"
 echo " n / repeat  : $max_tokens / $repeat"
 echo " out_dir     : $out_dir"
 
@@ -156,10 +165,15 @@ echo " out_dir     : $out_dir"
 #   "llama_perf_context_print:        eval time = ... (   12.34 tokens per second)"
 # prompt eval 줄은 prefill 이므로 제외한다.
 decode_tps() {
-    grep -h "eval time" "$1" 2>/dev/null |
-        grep -v "prompt eval" |
-        tail -1 |
-        sed -n 's/.*, *\([0-9.]*\) tokens per second.*/\1/p'
+    local tps
+    # bench 모드(--bench-prompt-file): "  decode mean:    10.91 t/s"
+    tps=$(grep -h "decode mean" "$1" 2>/dev/null | tail -1 |
+        sed -n 's/.*: *\([0-9.]*\) *t\/s.*/\1/p')
+    # 단일 프롬프트 모드: "eval time = ... (   12.34 tokens per second)"
+    [[ -n "$tps" ]] || tps=$(grep -h "eval time" "$1" 2>/dev/null |
+        grep -v "prompt eval" | tail -1 |
+        sed -n 's/.*, *\([0-9.]*\) tokens per second.*/\1/p')
+    echo "$tps"
 }
 
 run_one() {

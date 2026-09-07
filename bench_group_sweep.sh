@@ -35,10 +35,14 @@ usage: [VAR=값 ...] bash bench_group_sweep.sh [simple|full]
   VBS       VRAM budget 목록  (기본 "5 6 7", vb < 10)
   BACKENDS  lambda 프로파일   (기본 "kairox neuralink")
 
+프롬프트 (bench_models.sh 와 같은 prompts.txt 집합을 기본으로 쓴다)
+  PROMPT_FILE 프롬프트 집합 파일  (기본 ./prompts.txt)
+  BENCH_RUNS  조합당 프롬프트 개수 (기본 5, simple 은 2)
+
 기타
   MODEL_DIR 모델 디렉터리     (기본 $HOME/SPIF-GGUF 또는 /root/SPIF-GGUF)
   MODEL     본 모델 .gguf
-  N         생성 토큰 수      (기본 512)
+  N         프롬프트당 생성 토큰 수 (기본 512)
   OUT_DIR   결과 디렉터리     (기본 ./group_sweep_logs)
   REGROUP   0 이면 없는 split 을 새로 만들지 않고 건너뛴다 (기본 1)
   REBUILD   1 이면 build_rel 지우고 새로 빌드
@@ -85,10 +89,12 @@ if [[ "$run_mode" == "simple" ]]; then
     sizes=${SIZES:-"8 16 32"}
     vbs=${VBS:-"6"}
     backends=${BACKENDS:-"kairox"}
+    bench_runs=${BENCH_RUNS:-2}
 else
     sizes=${SIZES:-"2 4 8 16 32 64 128"}
     vbs=${VBS:-"5 6 7"}
     backends=${BACKENDS:-"kairox neuralink"}
+    bench_runs=${BENCH_RUNS:-5}
 fi
 
 out_dir=${OUT_DIR:-$repo_root/group_sweep_logs}
@@ -97,8 +103,10 @@ rebuild=${REBUILD:-0}
 force=${FORCE:-0}
 
 export N=${N:-512}
+export BENCH_RUNS=$bench_runs      # prompts.txt 에서 앞에서부터 이만큼을 돌린다
 export IGNORE_EOS=${IGNORE_EOS:-1} # 토큰 수가 런마다 달라지면 카운터 비교가 오염된다
 export SUMMARY=0                   # 조합별 요약은 이 스크립트가 마지막에 한 번에 낸다
+[[ -n "${PROMPT_FILE:-}" ]] && export PROMPT_FILE
 
 summary_csv=$out_dir/group_sweep_summary.csv
 
@@ -160,7 +168,8 @@ echo " model      : $model_name"
 echo " group_size : $available_sizes"
 echo " vb         : $vbs"
 echo " backends   : $backends"
-echo " n          : $N"
+echo " prompt     : ${PROMPT_FILE:-prompts.txt} x ${bench_runs}런"
+echo " n          : $N (프롬프트당)"
 echo " out_dir    : $out_dir"
 
 # -----------------------------------------------------------------------------
