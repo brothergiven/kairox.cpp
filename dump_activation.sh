@@ -75,6 +75,14 @@ csv=${OUT:-$repo_root/kairox_activation.csv}
 # (README 5-6). 다만 텍스트 자체의 발산은 이것으로 막히지 않는다.
 ignore_eos=${IGNORE_EOS:-0}
 
+# DUMP=0 이면 계측을 끈다. 계측은 레이어마다 D2H 복사 + cudaStreamSynchronize 를 추가하므로
+# 처리량(tok/s)을 비교할 때는 반드시 꺼야 한다. 정확도 지표를 볼 때만 1 로 둔다.
+dump=${DUMP:-1}
+# GATHER=1 이면 흩어진 그룹을 staging 버퍼로 모아 H2D 1회 + scatter 커널 1회로 옮긴다.
+gather=${GATHER:-0}
+# 기존(개별 전송) 경로에서 몇 번의 memcpy 마다 동기화할지. 기본 4 가 저자 설정이다.
+reload_window=${RELOAD_WINDOW:-4}
+
 # 조건부 인자는 배열에 담아 넘긴다. 빈 배열은 "${arr[@]}" 로 펼치면 인자 0개가 되어 안전하다.
 eos_args=()
 [[ "$ignore_eos" == 1 ]] && eos_args=(--ignore-eos)
@@ -129,6 +137,7 @@ done
 rm -f "$csv"
 
 echo "platform=$platform  gpu_vram=${gpu_vram}GiB  threads=$threads  vb=${vb}GiB  n=$max_tokens"
+echo "dump=$dump  gather=$gather  reload_window=$reload_window"
 #                                   ^^^^^^^^^^^^
 # ${gpu_vram}GiB 처럼 중괄호를 쓰는 이유: $gpu_vramGiB 라고 쓰면
 # 셸이 "gpu_vramGiB" 라는 이름의 변수를 찾아버린다. 변수명 경계를 명시하는 것.
@@ -157,8 +166,10 @@ env \
     KAIROX_PARALLEL=1 \
     KAIROX_DFR_LAMBDA_INIT=0.67 \
     KAIROX_DFR_LAMBDA_ADAPT_RATE=0.05 \
-    KAIROX_DUMP_ACTIVATION=1 \
+    KAIROX_DUMP_ACTIVATION="$dump" \
     KAIROX_DUMP_ACTIVATION_PATH="$csv" \
+    KAIROX_GATHER="$gather" \
+    KAIROX_RELOAD_WINDOW="$reload_window" \
     "$bin" \
     -m "$model" \
     -kairox-ms "$model_split" \
@@ -188,6 +199,9 @@ status=$?
 
 # -s : 파일이 존재하고 크기가 0 보다 큰가.
 # die 에 넘기는 문자열이 여러 줄인데, 큰따옴표 안에서는 줄바꿈이 그대로 유지된다.
+# 계측을 껐으면 CSV 가 없는 게 정상이므로 여기서 끝낸다.
+[[ "$dump" == 1 ]] || exit "$status"
+
 [[ -s "$csv" ]] || die "CSV 없음: $csv
   - 정상 종료했는지 (소멸자 실행 여부)
   - 로그에 'wrote activation dump to' 가 있는지 확인"
