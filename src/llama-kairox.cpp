@@ -226,8 +226,8 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
             break;
         }
     }
-    // group 의 개수를 1024개 이하로 설정하는 것을 권장함.
-    GGML_ASSERT(n_group <= 1024 && "Recommended: n_group <= 1024 for faster DFR processing");
+    // // group 의 개수를 1024개 이하로 설정하는 것을 권장함.
+    // GGML_ASSERT(n_group <= 1024 && "Recommended: n_group <= 1024 for faster DFR processing");
 
     auto create_tensor = [&](ggml_context * ctx, ggml_type type, std::vector<int64_t> ne, int il, const char * name) {
         char tensor_name[GGML_MAX_NAME];

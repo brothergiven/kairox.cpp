@@ -2,7 +2,14 @@
 
 constexpr int kairox_dfr_warps_per_block = 4;
 constexpr int kairox_dfr_mask_threads    = 256;
-constexpr int kairox_dfr_mask_words      = 1024 / 32;
+// constexpr int kairox_dfr_mask_words      = 1024 / 32;
+// 결정 단위(group_size) 스윕을 위해 상한을 1024 -> 16384 그룹으로 넓혔다.
+// 이 값은 kairox_dfr_mask_f32_kernel 의 공유 메모리 비트마스크 크기를 결정하며,
+// 비용은 그룹당 1비트뿐이다 — 16384 그룹이라도 2 KiB 로, 블록당 48 KiB 한도에 한참 못 미친다.
+// n_ff=11008 기준 group_size=1 (11008 그룹) 까지 커버한다.
+constexpr int kairox_dfr_max_groups      = 16384;
+constexpr int kairox_dfr_mask_words      = kairox_dfr_max_groups / 32;
+
 
 template <bool HAS_SUM_COLS, bool USE_EMA, int N_COLS = 0>
 static __launch_bounds__(kairox_dfr_warps_per_block * WARP_SIZE, 1) __global__ void kairox_dfr_update_f32_kernel(
@@ -216,8 +223,10 @@ void ggml_cuda_op_dfr_mask(ggml_backend_cuda_context & ctx,
     const int topk_stride = (int) (topk_idx->nb[1] / sizeof(int32_t));
     const int n_groups    = (int) load_group->ne[0];
 
-    GGML_ASSERT(n_groups > 0 && n_groups <= 1024);
+    // GGML_ASSERT(n_groups > 0 && n_groups <= 1024);
+    GGML_ASSERT(n_groups > 0 && n_groups <= kairox_dfr_max_groups);
     GGML_ASSERT(evict_group->ne[0] == n_groups);
+
 
     const int32_t * topk_data        = (const int32_t *) topk_idx->data;
     float *         load_group_data  = (float *) load_group->data;
