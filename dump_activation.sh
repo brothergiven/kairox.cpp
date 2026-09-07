@@ -1,11 +1,19 @@
 #!/bin/bash
 # 이 파일 실행 시 bash로 해석해라
 
-# KAIROX Activation/Resident 계측 실행 스크립트
+# KAIROX Activation/Resident 계측 러너.
+#
+# bench_models.sh <-> test_kairox.sh 관계와 같다.
+#   group_sweep.sh   : 스윕 드라이버 (여러 조합을 돌린다)
+#   dump_activation.sh : 한 조합을 실행하는 러너 (이 파일)
+#
+# 모든 설정은 환경변수로 받는다. 인자를 쓰지 않는 이유는 드라이버에서
+#   VAR=값 bash dump_activation.sh
+# 형태로 한 줄에 조합을 넘기기 편해서다.
 
 # -u: 정의되지 않은 변수 사용 시 에러
-# -o pipefall : 파이프 중간이 실패해도 전체를 실패로
-set -uo pipefall
+# -o pipefail : 파이프 중간이 실패해도 전체를 실패로
+set -uo pipefail
 
 # 스크립트 파일이 있는 디렉터리를 절대경로로 얻음
 # 어느 위치에서 실행되더라도 현재 레포의 root를 얻을 수 있도록.
@@ -19,66 +27,132 @@ cd "$repo_root" || exit 1
 
 # 함수 정의. 호출 시 괄호는 쓰지 않는다.
 usage() {
-  cat <<'EOF' # 'EOF 가 나올 때까지를 통째로 문자열로 취급해 cat에 넘긴다.
-usage: [PLATFORM=3070] [VB=N] [N=512] [OUT=path.csv] [MODEL_DIR=dir] [PROMPT_FILE=f] \
-  bash dump_activation.sh
+  cat <<'EOF' # 'EOF' 가 나올 때까지를 통째로 문자열로 취급해 cat에 넘긴다.
+usage: [VAR=값 ...] bash dump_activation.sh
 
+hw / 실행 프로파일 (test_kairox.sh 의 platform 표와 동일하게 유지한다)
+  PLATFORM     3080 | 3080ti | 4090 | 3070      (기본 3080)
+  VB           VRAM Budget (GiB). 반드시 gpu_vram 보다 작아야 한다
+  THREADS      CPU 스레드 수 (기본: platform 기본값)
 
-  PLATFORM    3070 | 3080
-  VB          VRAM Budget
-  N           estimated # of generated tokens
-  OUT         output path of csv file
-  MODLE_DIR   directory of model file(.gguf)
-  PROMPT_FILE path of prompt file
+backend 프로파일 (test_kairox.sh 의 backend 표와 동일)
+  BACKEND      kairox | neuralink                (기본 kairox)
+                 kairox    -> lambda_init=0.67  adapt=0.05
+                 neuralink -> lambda_init=0.00  adapt=0.00
+  LAMBDA_INIT  BACKEND 기본값을 덮어쓴다
+  LAMBDA_ADAPT BACKEND 기본값을 덮어쓴다
+
+모델 / 생성
+  MODEL_DIR    모델 디렉터리                     (기본 $HOME/SPIF-GGUF)
+  MODEL        본 모델 .gguf
+  MODEL_SPLIT  model-split .gguf (그룹 크기가 여기에 들어있다)
+  N            생성 토큰 수                      (기본 512)
+  CTX          컨텍스트 크기                     (기본 1024)
+  SEED         샘플링 시드                       (기본 42)
+  IGNORE_EOS   1 이면 --ignore-eos 로 N 토큰을 강제 생성 (기본 1)
+  PROMPT_FILE  프롬프트 파일 경로 (없으면 내장 프롬프트)
+
+출력
+  OUT          activation CSV 경로              (기본 ./kairox_activation.csv)
+  LOG          실행 로그 경로. 주면 stdout/stderr 를 여기로 보낸다
+  SUMMARY      1 이면 실행 후 요약표를 출력      (기본 1)
 EOF
   exit 1
 }
 
-# HW Profile.
+die() { echo "error: $*" >&2; exit 1; }
 
-platform=${PLATFORM:-3070} # 환경변수가 지정되어있으면 그 값, 없거나 비어있으면 기본 값 3070
+# =============================================================================
+# HW 프로파일 — test_kairox.sh 의 set_platform_defaults() 와 값이 같아야 한다.
+# =============================================================================
+
+platform=${PLATFORM:-3080} # 환경변수가 지정되어있으면 그 값, 없거나 비어있으면 기본 값 3080
 
 case "$platform" in
-3070)
-  gpu_vram=8
-  threads=7
-  vb_default=6
-  ;;
 3080)
   gpu_vram=10
-  threads=12
+  platform_threads=12
+  vb_default=6
+  ;;
+3080ti)
+  gpu_vram=12
+  platform_threads=12
+  vb_default=6
+  ;;
+4090)
+  gpu_vram=24
+  platform_threads=16
+  vb_default=12
+  ;;
+3070)
+  gpu_vram=8
+  platform_threads=7
   vb_default=6
   ;;
 *)
-  echo "error: unknown platform '$platform'" >^2 # 표준 출력이 아니라 표준 에러로 내보낸다
+  echo "error: unknown platform '$platform'" >&2 # 표준 출력이 아니라 표준 에러로 내보낸다
   usage
   ;;
 esac
 
 vb=${VB:-$vb_default}
+threads=${THREADS:-$platform_threads}
+
+# =============================================================================
+# backend 프로파일 — test_kairox.sh 의 set_backend_defaults() 와 값이 같아야 한다.
+# =============================================================================
+
+backend=${BACKEND:-kairox}
+
+case "$backend" in
+kairox)
+  lambda_init_default=0.67
+  lambda_adapt_default=0.05
+  ;;
+neuralink)
+  lambda_init_default=0.00
+  lambda_adapt_default=0.00
+  ;;
+*)
+  echo "error: unknown backend '$backend' (kairox | neuralink)" >&2
+  usage
+  ;;
+esac
+
+lambda_init=${LAMBDA_INIT:-$lambda_init_default}
+lambda_adapt=${LAMBDA_ADAPT:-$lambda_adapt_default}
+
+# =============================================================================
+# 모델 / 생성 설정
+# =============================================================================
 
 model_dir=${MODEL_DIR:-$HOME/SPIF-GGUF}
-model=$model_dir/prosparse-llama-2-7b-Q8_0.gguf
-model_split=$model_dir/prosparse-llama-2-7b-sparkinfer-model-split-688.gguf
+model=${MODEL:-$model_dir/prosparse-llama-2-7b-Q8_0.gguf}
+model_split=${MODEL_SPLIT:-$model_dir/prosparse-llama-2-7b-sparkinfer-model-split-688.gguf}
 
 max_tokens=${N:-512}
-ctx_size=1024
-seed=42
+ctx_size=${CTX:-1024}
+seed=${SEED:-42}
+ignore_eos=${IGNORE_EOS:-1}
+summary=${SUMMARY:-1}
 csv=${OUT:-$repo_root/kairox_activation.csv}
+log=${LOG:-}
 
-# -n "$X" : 문자열이 비어있지 않다면  참
+# -n "$X" : 문자열이 비어있지 않다면 참
 # ${PROMPT_FILE:-} 는 PROMPT_FILE이 존재하지 않으면 빈 문자열을 반환함
-if [[ -n "${PROMPT_FILE:-}" ]] then #
+if [[ -n "${PROMPT_FILE:-}" ]]; then
   # -f 는 파일이 존재하는지 검사
   # A || B 는 A가 실패하면 B를 실행.
-  [[ -f "$PROMPT_FILE" ]] || { echo "error: PROMPT_FILE 없음: $PROMPT_FILE" >&2; exit 1; }
+  [[ -f "$PROMPT_FILE" ]] || die "PROMPT_FILE 없음: $PROMPT_FILE"
   prompt=$(<"$PROMPT_FILE") # $(<파일) : 파일 내용을 통쨰로 읽어 값으로 사용.
 else
-    prompt='Implement and compare multiple sorting algorithms in Python, including quicksort, mergesort, heapsort, and insertion sort. For each algorithm, provide clean implementations, analyze time and space complexity, and discuss when it performs best.
+  prompt='Implement and compare multiple sorting algorithms in Python, including quicksort, mergesort, heapsort, and insertion sort. For each algorithm, provide clean implementations, analyze time and space complexity, and discuss when it performs best.
   ```python'
 fi
 
-die() { echo "error: $*" >&2; exit 1; }
+# =============================================================================
+# 사전 점검
+# =============================================================================
 
 bin=$repo_root/build_rel/bin/llama-completion
 
@@ -88,11 +162,6 @@ bin=$repo_root/build_rel/bin/llama-completion
 [[ -x "$bin" ]]         || die "$bin 없음 — 'bash compile_kairox.sh rel' 먼저 실행"
 [[ -f "$model" ]]       || die "model 없음: $model"
 [[ -f "$model_split" ]] || die "model_split 없음: $model_split"
-
-# (( )) 는 숫자 비교 전용. 안에서는 $ 를 생략하고 C 문법을 그대로 쓴다.
-# vb 는 GPU 전체 VRAM 보다 작아야 한다 (나머지는 KV 캐시 등에 필요).
-((vb < gpu_vram)) || die "vb=$vb 가 platform=$platform 의 gpu_vram=$gpu_vram 이상이다"
-
 
 # (( )) 는 숫자 비교 전용. 안에서는 $ 를 생략하고 C 문법을 그대로 쓴다.
 # vb 는 GPU 전체 VRAM 보다 작아야 한다 (나머지는 KV 캐시 등에 필요).
@@ -111,10 +180,12 @@ done
 # -f 는 파일이 없어도 에러를 내지 않는 옵션 (force). set -u 와 무관하다.
 rm -f "$csv"
 
-echo "platform=$platform  gpu_vram=${gpu_vram}GiB  threads=$threads  vb=${vb}GiB  n=$max_tokens"
-#                                   ^^^^^^^^^^^^
+echo "platform=$platform gpu_vram=${gpu_vram}GiB threads=$threads vb=${vb}GiB" \
+     "backend=$backend lambda=$lambda_init/$lambda_adapt n=$max_tokens ignore_eos=$ignore_eos"
+#             ^^^^^^^^^^^^
 # ${gpu_vram}GiB 처럼 중괄호를 쓰는 이유: $gpu_vramGiB 라고 쓰면
 # 셸이 "gpu_vramGiB" 라는 이름의 변수를 찾아버린다. 변수명 경계를 명시하는 것.
+echo "model_split=$(basename "$model_split")  csv=$csv"
 
 # =============================================================================
 # 실행
@@ -130,33 +201,50 @@ echo "platform=$platform  gpu_vram=${gpu_vram}GiB  threads=$threads  vb=${vb}GiB
 # get_env_bool() 은 정확히 "0" 또는 "1" 만 받는다. true/yes/on 은 경고 없이 off 로 폴백.
 #
 # --no-warmup : 워밍업 실행분이 카운터에 누적되지 않게 한다.
+# --ignore-eos: 런마다 생성 길이가 달라지면 토큰 스텝 수가 달라져 지표 비교가 오염된다.
+#               EOS 를 무시해 항상 N 토큰을 생성시킨다.
 # CSV 는 kairox_cache_manager 소멸자에서 기록되므로 정상 종료해야 파일이 남는다
 # (Ctrl+C 로 끊으면 파일이 안 생긴다).
-#
-# 줄 끝의 \ 는 "다음 줄에 계속" 이라는 뜻이다. \ 뒤에 공백이 하나라도 있으면 깨진다.
 
-env \
-    CUDA_VISIBLE_DEVICES=0 \
-    KAIROX_PARALLEL=1 \
-    KAIROX_DFR_LAMBDA_INIT=0.67 \
-    KAIROX_DFR_LAMBDA_ADAPT_RATE=0.05 \
-    KAIROX_DUMP_ACTIVATION=1 \
-    KAIROX_DUMP_ACTIVATION_PATH="$csv" \
-    "$bin" \
-    -m "$model" \
-    -kairox-ms "$model_split" \
-    -cffn -fit off -ngl all \
-    --no-mmap --no-direct-io \
-    -vb "$vb" \
-    -no-cnv \
-    --repeat-penalty 1.1 \
-    --dry-multiplier 0.6 \
-    -t "$threads" \
-    -s "$seed" \
-    -c "$ctx_size" \
-    -n "$max_tokens" \
-    -p "$prompt" \
+env_args=(
+    CUDA_VISIBLE_DEVICES=0
+    KAIROX_PARALLEL=1
+    "KAIROX_DFR_LAMBDA_INIT=$lambda_init"
+    "KAIROX_DFR_LAMBDA_ADAPT_RATE=$lambda_adapt"
+    KAIROX_DUMP_ACTIVATION=1
+    "KAIROX_DUMP_ACTIVATION_PATH=$csv"
+)
+
+cmd_args=(
+    "$bin"
+    -m "$model"
+    -kairox-ms "$model_split"
+    -cffn -fit off -ngl all
+    --no-mmap --no-direct-io
+    -vb "$vb"
+    -no-cnv
+    --repeat-penalty 1.1
+    --dry-multiplier 0.6
+    -t "$threads"
+    -s "$seed"
+    -c "$ctx_size"
+    -n "$max_tokens"
+    -p "$prompt"
     --no-warmup
+)
+
+((ignore_eos)) && cmd_args+=(--ignore-eos)
+
+# %q 는 "셸에 다시 붙여넣어도 그대로 돌아가는 형태" 로 따옴표를 붙여 출력한다.
+printf '%q ' env "${env_args[@]}" "${cmd_args[@]}"
+printf '\n'
+
+if [[ -n "$log" ]]; then
+    mkdir -p "$(dirname "$log")"
+    env "${env_args[@]}" "${cmd_args[@]}" >"$log" 2>&1
+else
+    env "${env_args[@]}" "${cmd_args[@]}"
+fi
 
 # $? = 직전 명령어의 종료 코드 (0 이면 성공).
 # 반드시 바로 다음 줄에서 받아야 한다. 중간에 echo 하나만 끼어도
@@ -172,7 +260,10 @@ status=$?
 # die 에 넘기는 문자열이 여러 줄인데, 큰따옴표 안에서는 줄바꿈이 그대로 유지된다.
 [[ -s "$csv" ]] || die "CSV 없음: $csv
   - 정상 종료했는지 (소멸자 실행 여부)
-  - 로그에 'wrote activation dump to' 가 있는지 확인"
+  - 로그에 'wrote activation dump to' 가 있는지 확인${log:+ ($log)}"
+
+# 드라이버에서 여러 번 부를 때는 요약이 방해되므로 SUMMARY=0 으로 끌 수 있다.
+((summary)) || exit 0
 
 echo
 echo "=== 전체 ==="
