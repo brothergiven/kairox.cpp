@@ -216,9 +216,16 @@ for backend in $backends; do
 
         # group_sweep.sh 는 SIZES/OUT_DIR/MODEL_DIR 을 읽고,
         # BACKEND/VB/PLATFORM/N/MODEL 은 환경 상속으로 dump_activation.sh 까지 내려간다.
-        # 로그는 이어붙인다(>>). 재개해서 여러 번 돌면 그만큼 뒤에 쌓인다.
+        #
+        # 출력을 파일로만 보내면 조합 하나(gs 여러 개)가 다 끝날 때까지 콘솔이 조용하다.
+        # tee 로 전체를 로그에 남기면서(이어붙이기), 진행을 알 수 있는 줄만 콘솔로 흘린다.
+        #   --line-buffered : 파이프 뒤에서도 줄 단위로 바로 내보낸다. 없으면 grep 이
+        #                     4KB 쯤 모아서 내보내기 때문에 여전히 뚝뚝 끊겨 보인다.
         BACKEND="$backend" VB="$vb" SIZES="$pending" OUT_DIR="$dir" \
-            bash group_sweep.sh >>"$log" 2>&1
+            bash group_sweep.sh 2>&1 |
+            tee -a "$log" |
+            grep --line-buffered -E \
+                'group_size=|bench run attempt|decode mean|wrote activation dump|^(warning|error):'
 
         # 어떤 group_size 가 실제로 결과를 남겼는지만 짧게 보여준다.
         for gs in $available_sizes; do
