@@ -2,19 +2,31 @@
 
 ## 1. Motivation
 
-KAIROX는 FFN 뉴런을 그룹 단위(16개씩) 로 묶어서 GPU 캐시 교체(rebalancing)를 결정한다.
+KAIROX는 FFN 뉴런을 그룹 단위(16개씩)로 묶어서 GPU 캐시 교체(rebalancing)를 결정한다.
 
-이 때, 교체 결정은 그룹 단위이지만 실제 연산은 뉴런 단위로 발생하기 때문에 Rebalancing되어 GPU에는 올라갔지만 실제 사용은 되지 않는 "Wasted Rebalancing 현상"이 발생할 수 있다. 
+교체 결정은 그룹 단위이지만 실제 연산은 뉴런 단위로 발생한다. 따라서 한 그룹 안 16개 뉴런
+중 일부만 필요해도 그룹 전체가 GPU에 올라가고, 나머지는 캐시 공간만 차지한 채 쓰이지 않는
+"Wasted Rebalancing"이 발생할 수 있다.
 
-즉, 한 그룹 안 16개 뉴런 중 일부 뉴런만 자주 필요해도 해당 그룹 전체가 Hot으로 분류되어 GPU에 올라가고, 나머지 뉴런들은 GPU 캐시 공간만 차지한 채 사용되지 않을 수도 있다.
+이를 계측한 결과(4절), 기준 설정에서 **리밸런싱 로드의 45.14%가 한 번도 쓰이지 않고
+축출된다.** 결정 단위를 뉴런 단위까지 좁히면 이 값은 19.73%까지 떨어지고 실제 PCIe 전송량은
+4.5배 줄어든다(5-2절).
+
+다만 원인은 처음 예상과 달랐다. **캐시 적중률은 결정 단위와 무관하게 일정하다**(64배 범위에서
+59.6~62.3%). 즉 그룹을 잘게 쪼갠다고 예측이 더 맞는 것이 아니라, **거친 그룹이 같은 적중률을
+얻기 위해 불필요한 데이터를 훨씬 많이 옮기고 있는 것**이다.
+
+그럼에도 현재 구조에서는 결정 단위를 좁힐 수 없다. `group_size`가 DFR 점수 계산 단위이자
+evict/load 결정 단위이면서 동시에 DMA 전송 단위이기 때문이다. 이 문제와 해법(gather 버퍼를
+통한 분리)은 5절에서 다룬다.
 
 ## 2. 코드 수정 사항
 
 
 | 파일 | 역할 |
 |---|---|
-| `ggml/include/ggml-kairox.hpp` | 계측 On/Off 스위치(`KAIROX_DUMP_ACTIVATION`)와 뉴런별 카운터 필드 5종 정의 |
-| `ggml/src/ggml-cuda/ggml-cuda.cu` | "이 뉴런이 지금 활성화됐고 + GPU에 상주 중인가"를 판정해서 `dbg_used_since_load`를 세팅 |
+| `ggml/include/ggml-kairox.hpp` | 계측 On/Off 스위치(`KAIROX_DUMP_ACTIVATION`)와 뉴런별 카운터 필드 6종 정의 |
+| `ggml/src/ggml-cuda/ggml-cuda.cu` | "이 뉴런이 지금 활성화됐고 + GPU에 상주 중인가"를 판정해서 `dbg_used_since_load` / `dbg_hit_count`를 세팅 |
 | `src/llama-kairox.cpp` | **실제 낭비 판정** — 로드/퇴출이 일어나는 순간 카운터를 갱신, 종료 시 CSV로 덤프 |
 
 ### 핵심 로직 — `src/llama-kairox.cpp:79-91`
@@ -45,12 +57,18 @@ if (k_kairox_dump_activation) { // 계측(KAIROX_DUMP_ACTIVATION)이 켜져 있�
 3. 그룹이 **퇴출(evict)** 될 때(83-86행) → 퇴출 직전 `used_since_load`를 검사한다. 여전히 0이면
    (로드된 이후 단 한 번도 켜진 적 없이 쫓겨나는 것이므로) `wasted_loads`를 1 증가시킨다.
 4. `used_since_load`가 1로 바뀌는 시점은 이 파일이 아니라 `ggml-cuda.cu`의
-   `kairox_dump_activation_counts()`다 — 예측기 점수(`sparse_idx`)가 임계값(0.5) 이상이면서
+   `kairox_dump_residency_counts()`다 — 예측기 점수(`sparse_idx`)가 임계값(0.5) 이상이면서
    동시에 그 뉴런이 지금 GPU에 상주 중일 때만 1로 세팅된다. **활성화됐어도 캐시 밖에 있어서
    CPU 경로로 계산됐다면 세팅되지 않는다** — 재고 싶은 건 "활성화 여부"가 아니라
    "GPU 캐시 슬롯이 쓸모 있었는가"이기 때문이다.
-5. 이 판정 함수는 반드시 `kairox_reload_plan()`(위 로직)보다 **먼저** 호출돼야 한다 — 순서가
-   바뀌면 "방금 막 로드된 뉴런"이 즉시 상주 상태로 잡혀 착시가 생기는 오프바이원 버그가 된다.
+5. 이 판정 함수는 반드시 `kairox_reload_plan()`(위 로직)보다 **나중에** 호출돼야 한다.
+   스왑이 끝난 뒤의 `neuron_mask`가 곧 이 레이어의 sparse matmul이 실제로 읽게 될 캐시
+   상태이기 때문이다. 스왑 전 마스크로 채점하면 "지금 필요해서 방금 로드한 뉴런"의 사용이
+   통째로 누락되어 `wasted_loads`가 구조적으로 부풀려진다.
+6. 누적 적중 카운터(`dbg_hit_count`)와 낭비 판정용 플래그(`dbg_used_since_load`)는 반드시
+   분리해야 한다. 후자는 로드 시 0으로 리셋되므로, 하나로 겸하면 지표 1·2가 과소집계된다.
+7. `total_loads == 0`인 뉴런은 리밸런싱으로 로드된 적이 없는 초기 상주분이므로 낭비 판정에서
+   제외한다. 초기 배치는 `[0, n_cached_neurons)` 고정으로 DFR의 결정이 아니기 때문이다.
 
 
 ## 3. 실행 방법
@@ -66,27 +84,46 @@ bash compile_kairox.sh rel
 ### 3-2. 계측 켜서 실행
 
 ```bash
-KAIROX_DUMP_ACTIVATION=1 \
-KAIROX_DUMP_ACTIVATION_PATH=./kairox_activation_dump.csv \
-  bash test_kairox.sh kairox 3080 kind=completion vb=6 \
-  model=/root/SPIF-GGUF/prosparse-llama-2-7b-Q8_0.gguf \
-  model_split=/root/SPIF-GGUF/prosparse-llama-2-7b-sparkinfer-model-split-688.gguf \
-  bench bench_runs=10
+bash dump_activation.sh
 ```
 
-### 3-3. 결과 확인
+`PLATFORM`(3070/3080), `VB`, `N`, `OUT`, `MODEL_SPLIT`, `IGNORE_EOS` 환경변수로 조정한다.
+비교 실험에서는 런마다 생성 길이가 달라지지 않도록 `IGNORE_EOS=1`을 쓴다.
+
+### 3-3. group_size 스윕
+
+model-split GGUF의 `ffn_group_size`만 바꿔 재작성한 뒤 스윕한다.
 
 ```bash
-awk -F, 'NR>1 { total+=$6; wasted+=$7 } END { printf "wasted-load rate: %.2f%%\n", wasted/total*100 }' \
-  kairox_activation_dump.csv
+for gs in 1 2 4 8 32 64; do
+  python3 regroup_model_split.py ~/SPIF-GGUF/prosparse-llama-2-7b-sparkinfer-model-split-688.gguf $gs
+done
+
+SIZES="1 2 4 8 16 32 64" bash group_sweep.sh
 ```
 
-레이어별로 보고 싶으면:
+### 3-4. PCIe 마이크로벤치마크
 
 ```bash
-awk -F, 'NR>1 { total[$1]+=$6; wasted[$1]+=$7 }
-         END { for (l in total) printf "layer %2d: %.2f%%\n", l, wasted[l]/total[l]*100 | "sort -n -k2" }' \
-  kairox_activation_dump.csv
+nvcc -O3 -std=c++17 -o bench_pcie bench_pcie.cu && ./bench_pcie
+```
+
+### 3-5. 결과 확인
+
+```bash
+awk -F, 'NR>1 { act+=$3; res+=$4; hit+=$5; tot+=$6; wst+=$7 }
+  END { printf "hit/resident   : %.2f%%\n", hit/res*100
+        printf "hit/activation : %.2f%%\n", hit/act*100
+        printf "wasted/total   : %.2f%%\n", wst/tot*100 }' kairox_activation.csv
+```
+
+레이어별로 볼 때는 `gpu_only` 레이어가 `total_loads = 0`이므로 0 나눗셈을 걸러야 한다
+(gawk는 0으로 나누면 중단된다):
+
+```bash
+awk -F, 'NR>1 { t[$1]+=$6; w[$1]+=$7 }
+  END { for (l in t) if (t[l] > 0) printf "layer %2d: %6.2f%%\n", l, w[l]/t[l]*100 }' \
+  kairox_activation.csv | sort -n -k2
 ```
 
 ---
@@ -119,36 +156,35 @@ awk -F, 'NR>1 { total[$1]+=$6; wasted[$1]+=$7 }
 </details>
 
 
-## 4. 실험 결과 (요약)
+## 4. 측정 결과
 
 측정 조건: RTX 3070 (8 GiB), `vb=6`, prosparse-llama-2-7b Q8_0, 단일 프롬프트,
-142 토큰 스텝 (prefill 1 배치 + decode). `KAIROX_PARALLEL=1 KAIROX_DUMP_ACTIVATION=1`.
+`--ignore-eos`로 생성 길이를 511 decode 토큰으로 고정(총 564 토큰 스텝).
+`KAIROX_PARALLEL=1 KAIROX_DUMP_ACTIVATION=1`.
+
+### 4-1. 기준선 (`group_size=16`)
 
 | 지표 | 값 | 의미 |
 |---|---|---|
-| `hit / resident` | **36.59%** | GPU 슬롯 중 실제로 쓰인 비율 |
-| `hit / activation` | **57.75%** | 필요한 뉴런 중 GPU에 있던 비율 (42%는 CPU 경로) |
-| `wasted / total` | **46.89%** | 리밸런싱 로드 중 한 번도 안 쓰이고 축출된 비율 |
-| 총 로드 이벤트 | 1,514,912 | |
+| `hit / resident` | 33.53% | GPU 슬롯 중 실제로 쓰인 비율 |
+| `hit / activation` | 60.89% | 필요한 뉴런 중 GPU에 있던 비율 (39%는 CPU 경로) |
+| `wasted / total` | 45.14% | 리밸런싱 로드 중 한 번도 안 쓰이고 축출된 비율 |
 
-### 4-1. 무작위 배치 대비 이득 (lift)
+### 4-2. 무작위 배치 대비 이득 (lift)
 
 `P(active)`는 아무 뉴런이나 골랐을 때 활성일 확률이므로, 정적·무작위 배치의 기대
-적중률과 같다. DFR이 달성한 `P(active | resident)`와의 비가 곧 리밸런싱의 순이득이다.
+적중률과 같다. DFR이 달성한 `P(active | resident)`와의 비가 리밸런싱의 순이득이다.
+초기 측정(142 토큰) 기준 전체 lift는 **1.354x**였고, 레이어 0은 **0.751x**로
+무작위 배치보다 나빴다.
 
-| | P(active) | P(active \| resident) | lift |
-|---|---|---|---|
-| 전체 | 27.02% | 36.59% | **1.354x** |
-| Layer 0 | 16.68% | 12.52% | **0.751x** |
-
-레이어 0은 무작위 배치보다 나쁘다. `llama-graph.cpp:1400`에서 마지막 레이어의
+레이어 0이 나쁜 이유는 구조적이다. `llama-graph.cpp:1400`에서 마지막 레이어의
 리밸런싱 대상이 레이어 0으로 wrap되는데, 이때 쓰는 예측은 토큰 `t`의 것이고 실제
-사용은 토큰 `t+1`이라 한 스텝 stale이기 때문이다. 게다가 계측이 `active_t`로 결정한
-마스크를 다시 `active_t`로 채점하므로 **0.751은 상한이고 실제는 더 나쁘다.**
+사용은 토큰 `t+1`이라 한 스텝 stale이다. 게다가 계측이 `active_t`로 결정한 마스크를
+다시 `active_t`로 채점하므로 **0.751은 상한이고 실제는 더 나쁘다.**
 
-### 4-2. 정적 배치 상한과의 비교
+### 4-3. 정적 배치 상한과의 비교
 
-각 레이어에서 활성화 빈도 상위 `n_cached`개를 고정 배치했을 때의 적중률 (oracle 상한):
+각 레이어에서 활성화 빈도 상위 `n_cached`개를 고정 배치했을 때의 적중률(oracle 상한):
 
 | Layer | DFR | 정적 배치 | 차이 |
 |---|---|---|---|
@@ -159,144 +195,177 @@ awk -F, 'NR>1 { total[$1]+=$6; wasted[$1]+=$7 }
 | L30 | 32.18% | 51.91% | +19.7%p |
 
 **32개 레이어 전부에서 정적 배치가 이긴다.** 그것도 PCIe 전송 0회로. 단 이는 해당
-실행의 빈도를 미리 아는 oracle이므로 정적 배치의 *상한*이며, 실측이 아니다.
+실행의 빈도를 미리 아는 oracle이므로 정적 배치의 *상한*이며 실측이 아니다.
 
 
 ## 5. 문제 재정의 — 결정 단위와 전송 단위의 결합
 
 ### 5-1. 진단
 
-초기 가설은 "그룹 안에 자주 같이 쓰이지 않는 뉴런들이 묶여 있다"(그룹 *구성*의 문제)였다.
-그러나 현재 계측 데이터로는 이를 검증할 수 없다. CSV는 뉴런별 누적값만 담고 있어
-"특정 시점에 그룹 내 몇 개가 동시에 활성인가"라는 순간 동시성이 보이지 않기 때문이다.
-
-더 정확한 진단은 다음과 같다. **`group_size=16`이라는 값 하나가 세 가지 역할을 동시에
-수행한다:**
+`group_size=16`이라는 값 하나가 세 가지 역할을 동시에 수행한다:
 
 1. DFR 점수 계산 단위 (`dfr_scores`, `group_mask`)
 2. evict/load 결정 단위 (`load_group` / `evict_group` 비트벡터)
 3. 물리적 DMA 전송 단위 (`ggml-cuda.cu`의 `group_nbytes`)
 
-여기서 **1·2는 작을수록 정확하고, 3은 클수록 대역폭 효율이 높다.** 현재 설계는 이 상충하는
-요구를 하나의 상수로 강제 결합해, 정확도를 전송 효율에 종속시키고 있다.
+**1·2는 작을수록 정확하고, 3은 클수록 전송 효율이 높다.** 현재 설계는 이 상충하는
+요구를 하나의 상수로 강제 결합해, 결정 단위를 전송 편의에 종속시키고 있다.
 
-측정된 전송 특성 (7B, `n_embd=4096`, Q8_0):
+### 5-2. group_size 스윕 — 결정 단위를 실제로 바꿔보면
 
-| 항목 | 값 |
-|---|---|
-| 뉴런 1개(row) | 4,352 B |
-| 그룹 1개(16 뉴런) = 1회 전송 | ~68 KB |
-| 142 토큰 실행의 up-tensor 전송량 | ~105 GB |
+`ffn_reorder_perms`는 group_size와 무관한 순수 뉴런 재배치이므로, model-split GGUF의
+`ffn_group_size` 스칼라만 교체하면(`regroup_model_split.py`) 같은 순열을 다르게 끊어
+읽을 수 있다. 클러스터링 재실행이 필요 없다.
 
-또한 `kairox_batch_reload`(`ggml-cuda.cu:2651`)는 이름과 달리 **그룹마다 별도의
-`cudaMemcpyAsync`를 순차 호출**한다. `reload_window_size=4`는 executor 스레드에 던지는
-작업 단위일 뿐 DMA는 합쳐지지 않는다. 호스트 버퍼는 pinned이지만
-(`ggml_backend_cuda_host_buffer_type`, `llama-kairox.cpp:310`), 68 KB는 PCIe를
-포화시키기엔 작은 편이다.
+| gs | n_group | hit/act | wasted/total | 뉴런 로드 | PCIe(GB) | 전송 횟수 | decode |
+|---|---|---|---|---|---|---|---|
+| 1 | 11,008 | 60.99% | **19.73%** | 1,602,541 | 20.92 | 4,807,623 | 5.23 tok/s |
+| 2 | 5,504 | 60.98% | 28.26% | 1,617,244 | 21.11 | 2,425,866 | 8.54 tok/s |
+| 4 | 2,752 | 59.56% | 34.92% | 1,887,252 | 24.64 | 1,415,439 | 12.77 tok/s |
+| 8 | 1,376 | 60.06% | 37.55% | 2,636,600 | 34.42 | 988,725 | 15.03 tok/s |
+| **16** | 688 | 60.89% | 45.14% | 4,376,512 | 57.14 | 820,596 | 15.86 tok/s |
+| 32 | 344 | 62.26% | 49.11% | 6,987,744 | 91.23 | 655,101 | 17.00 tok/s |
+| 64 | 172 | 61.50% | **50.12%** | 7,283,264 | 95.09 | 341,403 | 19.35 tok/s |
 
-### 5-2. 해법 방향 — gather 버퍼를 통한 분리
+세 가지가 드러난다.
 
-결정 단위와 전송 단위를 분리한다. 결정은 뉴런 단위(또는 훨씬 작은 그룹)로 내리되,
-실행 시점에 선택된 뉴런들이 원본에서 흩어져 있더라도 pinned staging buffer에 모아
-**하나의 큰 연속 전송**으로 보낸다.
+**① 적중률은 granularity와 무관하다.** `hit/activation`이 64배 범위에 걸쳐
+59.56~62.26%로 평평하다. 결정 단위를 잘게 해도 예측이 더 맞지는 않는다.
+
+**② 그런데 낭비와 데이터 이동량은 급감한다.** `wasted/total`은 50.12% → 19.73%로
+2.5배 줄고, 실제 옮기는 바이트는 95.09 GB → 20.92 GB로 **4.5배** 줄어든다.
+
+**③ 그럼에도 처리량은 나빠진다.** 19.35 → 5.23 tok/s. 전송 횟수가 341K → 4.8M으로
+14배 늘기 때문이다.
+
+즉 **`group_size=16`은 정확도를 위한 선택이 아니다.** 정확도는 어차피 동일하고,
+전송 횟수를 줄이려고 불필요한 뉴런까지 끌어오는 대가를 치르는 구조다.
+
+### 5-3. decode 시간 분해 — 병목은 대역폭이 아니라 호출 횟수
+
+바이트 수와 시간이 반대로 움직인다(gs=64는 95 GB를 26.4초, gs=1은 21 GB를 97.7초).
+대역폭이 병목이면 정반대여야 한다. `time = 계산 + 전송횟수 × 오버헤드 + 바이트/대역폭`
+으로 7개 지점을 최소제곱 적합하면:
 
 ```
-[결정]   뉴런별 DFR 점수 → 이번 스텝 로드할 K개 뉴런 (원본에서 흩어져 있음)
-            ↓
-[gather] CPU: 선택된 K개 행을 pinned staging buffer에 연속 복사
-            ↓
-[전송]   cudaMemcpyAsync 1회, K × row_bytes — PCIe 포화
-            ↓
-[scatter] GPU: 커널로 staging buffer → 각 캐시 슬롯에 분산 기록
-            ↓
+time = 16,330 ms + 전송횟수 x 16.86 us + (바이트 항은 무시할 수준)     R^2 = 0.9984
+```
+
+| gs | 실측 | 계산 | 전송 오버헤드 | 대역폭 |
+|---|---|---|---|---|
+| 1 | 97,660 ms | 16,330 | **81,054** | 777 |
+| 4 | 40,011 | 16,330 | **23,864** | 915 |
+| 16 | 32,212 | 16,330 | **13,835** | 2,121 |
+| 64 | 26,413 | 16,330 | **5,756** | 3,530 |
+
+**느려진 원인의 사실상 전부가 호출 횟수다.** 대역폭 기여는 전체의 1~3%에 불과하다.
+
+원인은 `ggml-cuda.cu:2651`의 `kairox_batch_reload`에 있다. 이름과 달리 그룹마다 별도의
+`cudaMemcpyAsync`를 순차 호출하고, `reload_window_size = 4`이므로 **전송 4번마다
+`cudaStreamSynchronize`가 들어간다.** 비동기 API를 쓰면서 실제로는 계속 동기화한다.
+
+### 5-4. PCIe 마이크로벤치마크 — 위 해석의 독립 검증
+
+`bench_pcie.cu`로 전송 크기와 동기화 주기를 직접 재면 (RTX 3070):
+
+**A. 68 KB 전송(현재 gs=16 조각 크기)에서 동기화 주기별**
+
+| sync 주기 | 호출당 | 실효 대역폭 |
+|---|---|---|
+| 매번 | 40.12 us | 1.74 GB/s |
+| **4회마다 (현재 KAIROX)** | **14.64 us** | **4.76 GB/s** |
+| 16회마다 | 7.70 us | 9.04 GB/s |
+| 끝에 한 번 | 5.92 us | 11.76 GB/s |
+
+측정된 14.64 us는 end-to-end 적합값 16.86 us와 잘 맞는다(차이는 executor 스레드
+핸드오프). **동기화 주기만 바꿔도 전송 경로가 2.5배 빨라진다.**
+
+**B. 대역폭 포화 지점 (끝에 한 번만 동기화)**
+
+| 전송 크기 | 대역폭 |
+|---|---|
+| 4.2 KB | 0.91 GB/s |
+| 68 KB | 11.76 GB/s |
+| 272 KB | 22.12 GB/s |
+| **1 MB** | **28.19 GB/s** |
+| 4 MB | 27.16 GB/s |
+
+**약 1 MB에서 28 GB/s로 포화**한다. 뉴런 1행이 4352 B이므로 **한 번에 240행 이상**을
+모아야 피크에 근접한다. 이것이 gather 배치 크기의 하한이다.
+
+**C. 흩어진 행: 개별 전송 vs gather 후 일괄 전송**
+
+| 행 수 | 개별 전송 | gather + 1회 | 배속 |
+|---|---|---|---|
+| 1,024 | 12.32 ms | 0.74 ms | **16.6x** |
+| 4,096 | 41.65 ms | 2.64 ms | **15.8x** |
+| 16,384 | 164.91 ms | 11.40 ms | **14.5x** |
+
+CPU 측 gather(단일 스레드 memcpy)가 비용의 대부분이지만(16,384행에서 11.4 ms 중 8.9 ms),
+그래도 개별 전송보다 14~20배 빠르다. 멀티스레드로 더 줄일 여지도 있다.
+
+### 5-5. 해법 — gather 버퍼로 결정 단위와 전송 단위 분리
+
+결정은 뉴런 단위로 내리되, 실행 시점에 선택된 뉴런들이 원본에서 흩어져 있더라도
+pinned staging buffer에 모아 하나의 큰 연속 전송으로 보낸다.
+
+```
+[결정]   뉴런별 DFR 점수 -> 이번 스텝 로드할 K개 뉴런 (원본에서 흩어져 있음)
+            |
+[gather] CPU: 선택된 K개 행을 pinned staging buffer 에 연속 복사
+            |
+[전송]   cudaMemcpyAsync 1회, K x 4352 B (K >= 240 이면 대역폭 포화)
+            |
+[scatter] GPU: 커널로 staging buffer -> 각 캐시 슬롯에 분산 기록
+            |
 [메타]   neuron_idx / neuron_mask 갱신 (이미 뉴런 단위로 존재)
 ```
 
-인프라의 절반은 이미 있다. `neuron_mask`, `neuron_idx`, 계측 카운터가 전부 뉴런 단위이고
-`SingleThreadExecutor`가 비동기 실행 골격을 제공한다. 새로 필요한 것은 (a) DFR 스코어와
-그룹 마스크를 세밀한 단위로 일반화, (b) gather/scatter 커널, (c) staging buffer 관리다.
+인프라의 절반은 이미 있다. `neuron_mask`, `neuron_idx`, 계측 카운터가 전부 뉴런
+단위이고 `SingleThreadExecutor`가 비동기 실행 골격을 제공한다. 새로 필요한 것은
+(a) DFR 스코어와 그룹 마스크의 뉴런 단위 일반화, (b) gather/scatter 커널,
+(c) staging buffer 관리다.
 
-### 5-3. 단계별 검증 계획
+**기대 효과.** 레이어 32 x 텐서 3 x 토큰 511 = 49,056회 전송으로 줄고 옮기는 양은
+gs=1 수준(20.9 GB)을 유지한다면, 적합 모델로 예측한 decode 시간은:
 
-구현 비용이 큰 순서를 뒤로 미루고, 먼저 "만들 가치가 있는가"를 싸게 확인한다.
+| | 전송 횟수 | 바이트 | decode | tok/s |
+|---|---|---|---|---|
+| 현재 최선 (gs=64) | 341,403 | 95.09 GB | 26,413 ms | 19.35 |
+| 현재 기준선 (gs=16) | 820,596 | 57.14 GB | 32,212 ms | 15.86 |
+| **gather + gs=1 (예측)** | **49,056** | **20.92 GB** | **17,933 ms** | **28.49** |
 
-| 단계 | 내용 | 비용 | 산출물 |
-|---|---|---|---|
-| **1** | 결정 단위(group_size)를 바꿔가며 정확도 변화 측정 | 낮음~중간 | gather/scatter 구현의 기대 이득 |
-| 2 | PCIe 마이크로벤치마크로 포화 임계 전송 크기 측정 | 중간 | 필요한 최소 gather 배치 크기 |
-| 3 | gather/scatter 실행기 구현 + end-to-end 재측정 | 높음 | 정확도·처리량 동시 검증 |
+**현재 최선 대비 처리량 +47%**, 기준선 대비 +80%다. 동시에 낭비율은 45.14% → 19.73%,
+PCIe 전송량은 57.14 GB → 20.92 GB로 줄어든다.
 
-1단계는 전송 효율을 무시하고 정확도만 본다. 여기서 개선폭이 작으면 3단계를 만들 이유가 없고,
-크면 그 값이 곧 3단계의 목표치가 된다. 결정 단위를 16보다 잘게 내리려면 `n_group <= 1024`
-단언을 풀어야 하는데, 이는 기술적 한계가 아닌 성능 가이드라인이다(5-5 참조).
+### 5-6. 스윕에 필요했던 코드 수정
 
-### 5-4. 1단계 실행 방법 — group_size 스윕
+결정 단위를 16보다 잘게 내리려면 두 겹의 1024 제약을 풀어야 했다.
 
-`ffn_reorder_perms`는 group_size와 무관한 순수 뉴런 재배치이므로, **같은 순열을 더 잘게
-끊어 읽는 것만으로** 결정 단위를 바꿀 수 있다. model-split GGUF의 `ffn_group_size`
-스칼라만 교체해 재작성하면 되고(`regroup_model_split.py`), 클러스터링을 다시 돌릴 필요가 없다.
+1. `llama-kairox.cpp:230` `GGML_ASSERT(n_group <= 1024)` — 저자의 성능 가이드라인이다
+   ("Recommended"). `ggml_argsort_top_k`는 `ncols > 1024`에서 CUB device-wide sort로
+   폴백하므로(`top-k.cu:81`, `GGML_CUDA_USE_CUB`는 CUDART >= 11.7에서 정의) 기술적
+   한계가 아니다. 경고로 완화했다.
+2. `dfr-fusion.cu:219` `GGML_ASSERT(n_groups <= 1024)` — 이쪽이 실제 제약이었다.
+   `kairox_dfr_mask_f32_kernel`이 고정 크기 공유 메모리 비트마스크
+   (`curr_mask_bits[1024/32]`)를 쓰기 때문이다. 그룹당 1비트뿐이므로 상한을 16384
+   그룹으로 넓혔다(공유 메모리 2 KiB, 블록당 48 KiB 한도에 한참 못 미침).
 
-### 5-5. `n_group <= 1024` 단언 해제
+`group_identity`(`n_group x n_group` F32)는 gs=1에서 462 MiB까지 커지지만 8 GiB
+카드에서 동작을 확인했다. 다만 DFR fusion이 활성일 때 이 텐서의 데이터는 읽히지
+않으므로(`ggml_cuda_op_dfr_mask`는 `topk_idx`만 받는다) 제거 여지가 있다.
 
-`group_size`를 16보다 잘게 내리면 다음 단언에 걸린다:
+### 5-7. 통제의 한계
 
-```
-llama-kairox.cpp:230: GGML_ASSERT(n_group <= 1024 && "Recommended: n_group <= 1024 ...")
-```
+`--ignore-eos`로 생성 길이는 511 토큰으로 고정했으나 **텍스트 자체의 발산은 남는다.**
+group_size가 바뀌면 GPU 상주 집합이 바뀌고, GPU 경로와 CPU 경로의 부동소수점 누적
+순서가 달라 미세한 수치 차이가 샘플링을 거쳐 증폭되기 때문이다. 실제로 `P(active)`가
+런마다 22.2~24.6%로 변동한다.
 
-**이는 기술적 한계가 아니라 저자가 걸어둔 성능 가이드라인이다.** 근거:
+핵심 지표(`hit/act` 평탄, `wasted` 단조 감소, 전송 횟수 지배)는 이 변동폭보다 훨씬 큰
+차이를 보이므로 결론은 견고하다. 다만 엄밀한 통제가 필요하면 활성화 trace를 한 번
+기록하고 정책을 오프라인에서 재생하는 방식(trace 기반 시뮬레이션)이 필요하다.
 
-- `ggml_argsort_top_k`는 `ncols > 1024`일 때 CUB device-wide sort로 폴백한다
-  (`top-k.cu:81`). `GGML_CUDA_USE_CUB`는 `CUDART_VERSION >= 11070`에서 정의되므로
-  (`common.cuh:105`) CUDA 11.7 이상이면 항상 활성이다. 실제 빌드 바이너리에도 CUB 심볼이
-  포함되어 있음을 확인했다.
-- 따라서 단언을 경고로 완화하면 세밀한 group_size가 그대로 동작한다.
-
-실제로 남는 제약은 `group_identity`가 `n_group × n_group` F32 텐서라는 점 하나다
-(`llama-kairox.cpp:305`). 선택된 인덱스를 마스크로 펴는 원-핫 확장을 제곱 메모리로
-수행하는 구조이며, scatter 한 번으로 대체 가능한 낭비다 — 5-2의 gather/scatter 작업에
-자연스럽게 포함된다.
-
-사용 가능한 group_size (11008 = 2⁸ × 43 의 약수):
-
-| group_size | n_group | group_identity | 상태 |
-|---|---|---|---|
-| 4 | 2,752 | 30 MiB | 가능 |
-| 8 | 1,376 | 7.2 MiB | 가능 |
-| 16 (현재) | 688 | 1.9 MiB | 기준선 |
-| 32 | 344 | 0.5 MiB | 가능 |
-| 64 | 172 | 0.1 MiB | 가능 |
-| 2 | 5,504 | 121 MiB | VRAM 여유 확인 필요 |
-| 1 | 11,008 | 485 MiB | `group_identity` 제거 선행 |
-
-### 5-6. 통제 문제 — 런 간 생성 텍스트 발산
-
-초기 스윕(16/32/64/128)에서 **런마다 생성된 텍스트가 완전히 달라지는** 문제가 확인됐다.
-프롬프트는 4런 모두 53토큰으로 동일했으나 생성 길이가 454/469/564/564로 갈렸고,
-`group_size=32`는 quicksort 코드를, `64`는 Q&A 형식을 생성했다.
-
-원인은 다음과 같다. group_size가 바뀌면 GPU 상주 뉴런 집합이 바뀌고, GPU 경로와 CPU
-경로의 부동소수점 누적 순서가 달라 미세한 수치 차이가 생긴다. 이것이 샘플링을 거쳐
-증폭되면서 서로 다른 텍스트로 발산한다. 그 결과 `P(active)`가 20.9~25.7%로 흔들려
-**지표 차이가 group_size 때문인지 텍스트가 달라서인지 분리되지 않는다.**
-
-| gs | 토큰스텝 | hit/act | wasted/tot | P(active) | lift |
-|---|---|---|---|---|---|
-| 16 | 454 | 62.59% | 47.70% | 23.39% | 1.460 |
-| 32 | 469 | 63.27% | 51.49% | 20.91% | 1.476 |
-| 64 | 564 | 61.26% | 49.55% | 25.66% | 1.429 |
-| 128 | 564 | 60.94% | 51.27% | 21.87% | 1.421 |
-
-이 수치는 통제되지 않았으므로 결론에 사용하지 않는다. 통제 방법은 두 가지다:
-
-1. **`--ignore-eos`로 생성 길이 고정** — 토큰 스텝 수는 맞출 수 있으나 텍스트 발산 자체는
-   남는다. 부분적 통제.
-2. **trace 기반 시뮬레이션** — 활성화 trace를 한 번 기록하고 정책을 오프라인에서 재생한다.
-   모든 group_size가 동일한 trace를 쓰므로 발산이 원천적으로 사라지고, `group_identity`
-   제약도 없어 `group_size=1`까지 커버된다. DFR 정책은 EMA + top-k로 단순하여
-   (`llama-graph.cpp:1295-1318`) 재현이 어렵지 않다.
-
----
 
 # KAIROX Artifact Evaluation
 
