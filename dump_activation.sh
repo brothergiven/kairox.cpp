@@ -50,7 +50,13 @@ backend 프로파일 (test_kairox.sh 의 backend 표와 동일)
   CTX          컨텍스트 크기                     (기본 1024)
   SEED         샘플링 시드                       (기본 42)
   IGNORE_EOS   1 이면 --ignore-eos 로 N 토큰을 강제 생성 (기본 1)
-  PROMPT_FILE  프롬프트 파일 경로 (없으면 내장 프롬프트)
+
+프롬프트 (기본은 bench_models.sh 와 같은 prompts.txt 집합)
+  PROMPT_FILE  한 줄 = 프롬프트 하나인 집합 파일  (기본 ./prompts.txt)
+  BENCH_RUNS   그 집합에서 앞에서부터 몇 개를 돌릴지 (기본 5)
+                 계측 카운터는 런 전체에 누적되므로, 여러 프롬프트를 돌릴수록
+                 특정 프롬프트에 치우치지 않은 activation 통계가 나온다
+  PROMPT       문자열을 직접 주면 그 프롬프트 하나만 돌린다 (PROMPT_FILE 무시)
 
 출력
   OUT          activation CSV 경로              (기본 ./kairox_activation.csv)
@@ -138,17 +144,40 @@ summary=${SUMMARY:-1}
 csv=${OUT:-$repo_root/kairox_activation.csv}
 log=${LOG:-}
 
+# 프롬프트는 두 갈래다.
+#   prompt_mode=bench  : prompts.txt 같은 프롬프트 집합을 --bench-prompt-file 로 넘긴다.
+#                        llama-completion 이 파일을 한 줄에 하나씩 읽어 BENCH_RUNS 개를
+#                        앞에서부터 순서대로 돌린다. 계측 카운터는 리셋되지 않고 누적되므로
+#                        결과 CSV 는 "여러 프롬프트에 걸친 합계" 가 된다.
+#   prompt_mode=single : -p 로 프롬프트 문자열 하나만 넘긴다.
+#
+# 기본값은 bench_models.sh 가 쓰는 것과 같은 ./prompts.txt 다.
+prompt_file=${PROMPT_FILE:-$repo_root/prompts.txt}
+bench_runs=${BENCH_RUNS:-5}
+
 # -n "$X" : 문자열이 비어있지 않다면 참
-# ${PROMPT_FILE:-} 는 PROMPT_FILE이 존재하지 않으면 빈 문자열을 반환함
-if [[ -n "${PROMPT_FILE:-}" ]]; then
-  # -f 는 파일이 존재하는지 검사
-  # A || B 는 A가 실패하면 B를 실행.
-  [[ -f "$PROMPT_FILE" ]] || die "PROMPT_FILE 없음: $PROMPT_FILE"
-  prompt=$(<"$PROMPT_FILE") # $(<파일) : 파일 내용을 통쨰로 읽어 값으로 사용.
+# ${PROMPT:-} 는 PROMPT 가 정의되지 않았으면 빈 문자열을 반환함
+if [[ -n "${PROMPT:-}" ]]; then
+  prompt_mode=single
+  prompt=$PROMPT
+elif [[ -f "$prompt_file" ]]; then # -f 는 파일이 존재하는지 검사
+  prompt_mode=bench
+  prompt=
 else
+  # PROMPT_FILE 을 명시했는데 없으면 오타일 가능성이 높으니 그냥 죽인다.
+  # A || B 는 A가 실패하면 B를 실행.
+  [[ -z "${PROMPT_FILE:-}" ]] || die "PROMPT_FILE 없음: $PROMPT_FILE"
+  # prompts.txt 조차 없을 때만 쓰는 폴백 프롬프트.
+  prompt_mode=single
   prompt='Implement and compare multiple sorting algorithms in Python, including quicksort, mergesort, heapsort, and insertion sort. For each algorithm, provide clean implementations, analyze time and space complexity, and discuss when it performs best.
   ```python'
 fi
+
+# 숫자가 아니면 아래 (( )) 나 실행 인자에서 이상하게 터진다. 여기서 걸러둔다.
+case "$bench_runs" in
+'' | *[!0-9]*) die "BENCH_RUNS 는 정수여야 한다: $bench_runs" ;;
+esac
+((bench_runs > 0)) || die "BENCH_RUNS 는 1 이상이어야 한다: $bench_runs"
 
 # =============================================================================
 # 사전 점검
@@ -185,6 +214,11 @@ echo "platform=$platform gpu_vram=${gpu_vram}GiB threads=$threads vb=${vb}GiB" \
 #             ^^^^^^^^^^^^
 # ${gpu_vram}GiB 처럼 중괄호를 쓰는 이유: $gpu_vramGiB 라고 쓰면
 # 셸이 "gpu_vramGiB" 라는 이름의 변수를 찾아버린다. 변수명 경계를 명시하는 것.
+if [[ "$prompt_mode" == "bench" ]]; then
+    echo "prompt=$(basename "$prompt_file") x ${bench_runs}런 (한 줄 = 프롬프트 하나)"
+else
+    echo "prompt=단일 문자열 (${#prompt}자)"
+fi
 echo "model_split=$(basename "$model_split")  csv=$csv"
 
 # =============================================================================
@@ -229,9 +263,21 @@ cmd_args=(
     -s "$seed"
     -c "$ctx_size"
     -n "$max_tokens"
-    -p "$prompt"
     --no-warmup
 )
+
+# --bench-warmup 0 : 워밍업 런의 activation 도 카운터에 누적되므로 반드시 0 이어야 한다.
+# --bench-no-print : 생성 텍스트를 로그에 찍지 않는다 (런당 512 토큰 x N 이라 로그가 커진다).
+if [[ "$prompt_mode" == "bench" ]]; then
+    cmd_args+=(
+        --bench-prompt-file "$prompt_file"
+        --bench-runs "$bench_runs"
+        --bench-warmup 0
+        --bench-no-print
+    )
+else
+    cmd_args+=(-p "$prompt")
+fi
 
 ((ignore_eos)) && cmd_args+=(--ignore-eos)
 
