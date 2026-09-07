@@ -119,7 +119,139 @@ awk -F, 'NR>1 { total[$1]+=$6; wasted[$1]+=$7 }
 </details>
 
 
-## 4. 실험 결과 (요약)
+## 4. 스윕 스크립트
+
+3절의 수동 실행을 매트릭스로 돌리기 위한 스크립트다. 아티팩트의 처리량 벤치(`bench_models.sh`
+-> `test_kairox.sh`)와 같은 드라이버/러너 구조를 계측 쪽에 그대로 옮긴 것이다.
+
+| 스크립트 | 역할 | 대응 |
+|---|---|---|
+| `dump_activation.sh` | 조합 하나를 실행하는 **러너**. 환경변수로만 설정을 받는다 | `test_kairox.sh` |
+| `group_sweep.sh` | group_size 축 하나를 훑는다 (러너를 gs마다 호출) | — |
+| `bench_group_sweep.sh` | group_size 스윕 **드라이버**. backend x vb 축을 바깥에 씌운다 | `bench_models.sh` |
+| `bench_activation.sh` | activation 프로파일 **드라이버**. vb x backend 축을 훑는다 | `bench_models.sh` |
+
+두 드라이버는 hw 구성을 `test_kairox.sh`의 **3080 프로파일(`gpu_vram=10 GiB`, `threads=12`)로
+고정**한다. 다른 GPU로 재려면 러너를 `PLATFORM=` 으로 직접 호출한다.
+
+모델 디렉터리 기본값은 `$HOME/SPIF-GGUF`이고, 없으면 컨테이너 경로 `/root/SPIF-GGUF`를 쓴다.
+
+### 4-1. group_size 스윕 — `bench_group_sweep.sh`
+
+```bash
+bash bench_group_sweep.sh simple   # gs 8/16/32 x kairox/vb6, 3조합 (동작 확인)
+bash bench_group_sweep.sh full     # 기본 매트릭스 (생략 시 full)
+
+# 축을 좁혀서 gs 경향만 먼저 보기 (7조합, 약 10분)
+BENCH_RUNS=2 BACKENDS="kairox" VBS="6" bash bench_group_sweep.sh full
+```
+
+| 변수 | 기본값 (`full` / `simple`) | 설명 |
+|---|---|---|
+| `SIZES` | `"2 4 8 16 32 64 128"` / `"8 16 32"` | group_size 목록. `n_ff`(11008)로 나누어떨어져야 한다 |
+| `VBS` | `"5 6 7"` / `"6"` | VRAM budget(GiB) 목록. 3080 고정이라 10 미만이어야 한다 |
+| `BACKENDS` | `"kairox neuralink"` / `"kairox"` | lambda 프로파일 |
+| `BENCH_RUNS` | `5` / `2` | 조합당 프롬프트 개수 |
+| `N` | `512` | 프롬프트당 생성 토큰 수 |
+| `PROMPT_FILE` | `./prompts.txt` | 한 줄 = 프롬프트 하나인 집합 파일 |
+| `MODEL_DIR` / `MODEL` | `$HOME/SPIF-GGUF` / `prosparse-llama-2-7b-Q8_0.gguf` | |
+| `OUT_DIR` | `./group_sweep_logs` | 결과 디렉터리 |
+| `REGROUP` | `1` | 없는 model-split을 `regroup_model_split.py`로 생성. `0`이면 그 gs를 건너뜀 |
+| `REBUILD` | `0` | `1`이면 `build_rel`을 지우고 새로 빌드 |
+| `FORCE` | `0` | `1`이면 이미 있는 CSV도 다시 측정 |
+
+출력:
+
+```text
+group_sweep_logs/
+  kairox__vb6/gs16.csv                                        # 뉴런별 raw (gs마다 하나)
+  group_sweep__kairox__3080__completion__<model>__vb6.log      # 조합별 실행 로그
+  group_sweep_summary.csv                                      # 조합별 집계
+```
+
+콘솔 마지막에 gs를 행, `(backend, vb)`를 열로 둔 비교표 3장(`hit/activation`, `hit/resident`,
+`wasted/total`)이 나온다.
+
+### 4-2. activation 프로파일 — `bench_activation.sh`
+
+group_size는 고정하고 vb(메모리 압박)와 backend 축을 보는 쪽이다.
+
+```bash
+bash bench_activation.sh simple
+bash bench_activation.sh full
+```
+
+`SIZES` 대신 `GROUP_SIZES`(기본 `"16"` = split-688)를 쓰고, `REPEAT`(기본 1)로 같은 조합을 여러
+번 반복할 수 있다는 점만 다르다. `VBS` 기본값은 `"4 5 6 7 8"`, 그 외 변수는 4-1과 같다.
+
+출력은 `activation_logs/` 아래에 `bench_models.sh`의 로그 이름 규칙을 따라 쌓인다:
+
+```text
+<benchmark_group>__<backend>__3080__completion__<model>__gs<N>__vb<M>.csv / .log
+activation_summary.csv     # decode t/s 포함
+```
+
+### 4-3. 러너 직접 호출 — `dump_activation.sh`
+
+```bash
+VB=6 BACKEND=kairox \
+  MODEL_SPLIT=$HOME/SPIF-GGUF/prosparse-llama-2-7b-sparkinfer-model-split-2752.gguf \
+  OUT=/tmp/gs4.csv bash dump_activation.sh
+```
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `PLATFORM` | `3080` | `3080`(10 GiB/12), `3080ti`(12/12), `4090`(24/16), `3070`(8/7) |
+| `VB` / `THREADS` | 프로파일 기본값 | VRAM budget(GiB) / CPU 스레드 |
+| `BACKEND` | `kairox` | `kairox`=lambda 0.67/adapt 0.05, `neuralink`=0.00/0.00 |
+| `LAMBDA_INIT` / `LAMBDA_ADAPT` | BACKEND 값 | 개별 덮어쓰기 |
+| `MODEL_SPLIT` | `...-split-688.gguf` | **group_size는 이 파일이 결정한다** |
+| `PROMPT_FILE` / `BENCH_RUNS` | `./prompts.txt` / `5` | 프롬프트 집합과 그중 몇 개를 돌릴지 |
+| `PROMPT` | — | 문자열을 주면 그 프롬프트 하나만 (`-p`, `PROMPT_FILE` 무시) |
+| `N` / `CTX` / `SEED` | `512` / `1024` / `42` | |
+| `IGNORE_EOS` | `1` | `--ignore-eos`로 N 토큰을 강제 생성 |
+| `OUT` / `LOG` / `SUMMARY` | `./kairox_activation.csv` / — / `1` | CSV 경로 / 실행 로그 / 요약표 출력 |
+
+프롬프트는 `--bench-prompt-file`로 넘어가고, 계측 카운터는 런 사이에 리셋되지 않으므로 CSV는
+**여러 프롬프트에 걸친 합계**가 된다. 워밍업 런도 카운터에 누적되기 때문에 `--bench-warmup 0`을
+쓴다.
+
+### 4-4. 재개와 재측정
+
+이미 CSV가 있는 조합은 건너뛴다. 축을 좁혀 돌린 뒤 넓혀서 다시 돌리면 새 조합만 측정하고,
+요약표는 매번 누적된 전체를 기준으로 다시 그린다.
+
+```bash
+# 1단계: gs 축만 (~10분)
+BENCH_RUNS=2 BACKENDS="kairox" VBS="6" bash bench_group_sweep.sh full
+# 2단계: vb 축 확장 — 1단계 결과는 재사용된다
+BENCH_RUNS=2 BACKENDS="kairox" VBS="5 6 7" SIZES="8 16 32" bash bench_group_sweep.sh full
+# 3단계: 확정된 조합만 표본을 늘려 재측정
+FORCE=1 BENCH_RUNS=10 VBS="6" SIZES="8 16 32" bash bench_group_sweep.sh full
+```
+
+표만 다시 그리고 싶을 때도 같은 명령을 다시 돌리면 된다 (전부 skip되고 CSV에서 표만 생성).
+
+### 4-5. 주의
+
+- **실행 시간**은 `조합 수 x BENCH_RUNS x N`에 비례한다. `bench_group_sweep.sh full` 기본값은
+  42조합이라 몇 시간 단위다. 축이나 `BENCH_RUNS`를 먼저 줄여서 경향을 본다.
+- 드라이버는 `group_sweep.sh`의 출력을 로그 파일로 보내므로 조합 하나가 끝나기 전까지 콘솔이
+  조용하다. 진행 상황은 `tail -f`로 본다:
+
+  ```bash
+  tail -f group_sweep_logs/group_sweep__kairox__3080__completion__*__vb6.log \
+    | grep --line-buffered -E "group_size=|bench run attempt|decode mean"
+  ```
+
+- CSV는 프로세스가 **정상 종료할 때** 소멸자에서 쓰인다. `Ctrl+C`로 끊으면 그 조합은 파일이
+  남지 않는다.
+- `group_size=1`은 `group_identity`가 11008^2 x 4 = 약 462 MiB라 VRAM을 크게 먹는다. 기본
+  `SIZES`에서 뺐으니 필요하면 직접 지정한다.
+- 스크립트가 도는 동안 스크립트 파일을 편집하지 않는다. bash는 실행하면서 파일을 이어 읽기
+  때문에 엉뚱한 지점으로 튈 수 있다.
+
+## 5. 실험 결과 (요약)
 
 
 | GPU | 총 VRAM | vb | 전체 로드 | 낭비된 로드 | **낭비율** |

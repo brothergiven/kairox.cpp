@@ -193,15 +193,32 @@ for backend in $backends; do
         mkdir -p "$dir"
         ((force)) && rm -f "$dir"/gs*.csv
 
+        # 이미 CSV 가 있는 group_size 는 빼고 넘긴다. group_sweep.sh 자체에는
+        # 건너뛰기 로직이 없으므로 여기서 목록을 줄여주는 방식으로 재개를 구현한다.
+        # (중단 후 같은 명령으로 다시 돌리면 남은 것만 이어서 돈다. FORCE=1 이면 전부 다시)
+        pending=""
+        for gs in $available_sizes; do
+            [[ -s "$dir/gs${gs}.csv" ]] || pending="$pending $gs"
+        done
+        pending=$(echo "$pending" | xargs)
+
+        if [[ -z "$pending" ]]; then
+            echo
+            echo "skip  backend=$backend vb=$vb — 모든 group_size 완료 (FORCE=1 로 재측정)"
+            continue
+        fi
+
         echo
         echo "=============================================================="
         echo " backend=$backend  vb=$vb  -> $log"
+        echo " 남은 group_size : $pending"
         echo "=============================================================="
 
         # group_sweep.sh 는 SIZES/OUT_DIR/MODEL_DIR 을 읽고,
         # BACKEND/VB/PLATFORM/N/MODEL 은 환경 상속으로 dump_activation.sh 까지 내려간다.
-        BACKEND="$backend" VB="$vb" SIZES="$available_sizes" OUT_DIR="$dir" \
-            bash group_sweep.sh >"$log" 2>&1
+        # 로그는 이어붙인다(>>). 재개해서 여러 번 돌면 그만큼 뒤에 쌓인다.
+        BACKEND="$backend" VB="$vb" SIZES="$pending" OUT_DIR="$dir" \
+            bash group_sweep.sh >>"$log" 2>&1
 
         # 어떤 group_size 가 실제로 결과를 남겼는지만 짧게 보여준다.
         for gs in $available_sizes; do
@@ -267,10 +284,13 @@ print_matrix() {
                 [[ -d "$dir" ]] || continue
                 csv=$dir/gs${gs}.csv
                 if [[ -s "$csv" ]]; then
+                    # 삼항 연산자를 여러 줄에 걸쳐 쓰면 mawk 가 파싱하지 못한다
+                    # (gawk 는 통과). 컨테이너 기본 awk 가 mawk 라 if/else 로 쓴다.
                     awk -F, -v m="$metric" 'NR>1 { a+=$3; r+=$4; h+=$5; t+=$6; w+=$7 }
                         END {
-                            v = (m == "hit_act")  ? (a ? h/a*100 : 0) :
-                                (m == "hit_res")  ? (r ? h/r*100 : 0) : (t ? w/t*100 : 0)
+                            if (m == "hit_act")      { v = (a ? h/a*100 : 0) }
+                            else if (m == "hit_res") { v = (r ? h/r*100 : 0) }
+                            else                     { v = (t ? w/t*100 : 0) }
                             printf "%13.2f%%", v
                         }' "$csv"
                 else
