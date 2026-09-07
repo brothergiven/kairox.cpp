@@ -60,13 +60,20 @@ case "$platform" in
 esac
 
 vb=${VB:-$vb_default}
+# 상주하지 못한 active 뉴런은 CPU 가 계산하므로(llama-graph.cpp:1553), 스레드 수는
+# 성능 병목이 전송인지 CPU 계산인지 가르는 노브다. 기본값은 HW 프로파일 값.
+threads=${THREADS:-$threads}
 
 model_dir=${MODEL_DIR:-$HOME/SPIF-GGUF}
 model=${MODEL:-$model_dir/prosparse-llama-2-7b-Q8_0.gguf}
 model_split=${MODEL_SPLIT:-$model_dir/prosparse-llama-2-7b-sparkinfer-model-split-688.gguf}
 
 max_tokens=${N:-512}
-ctx_size=1024
+# 프롬프트를 길게 주거나 batch 를 키우면 한 스텝의 활성화 합집합이 커져 reload 양이 는다.
+# 전송이 실제로 병목이 되는 영역을 만들려면 이 둘을 키워야 한다.
+ctx_size=${CTX:-1024}
+batch_size=${BATCH:-2048}
+ubatch_size=${UBATCH:-512}
 seed=42
 csv=${OUT:-$repo_root/kairox_activation.csv}
 
@@ -82,6 +89,10 @@ dump=${DUMP:-1}
 gather=${GATHER:-0}
 # 기존(개별 전송) 경로에서 몇 번의 memcpy 마다 동기화할지. 기본 4 가 저자 설정이다.
 reload_window=${RELOAD_WINDOW:-4}
+# lambda 는 TAM 감쇠 계수이자 one-hit-wonder 필터 임계값 tau=(1-lambda)+eps 를 동시에 정한다.
+# 두 역할이 반대 방향으로 움직이므로 스윕해서 분리해야 한다.
+lambda_init=${LAMBDA:-0.67}
+lambda_adapt=${LAMBDA_ADAPT:-0.05}
 
 # 조건부 인자는 배열에 담아 넘긴다. 빈 배열은 "${arr[@]}" 로 펼치면 인자 0개가 되어 안전하다.
 eos_args=()
@@ -137,7 +148,7 @@ done
 rm -f "$csv"
 
 echo "platform=$platform  gpu_vram=${gpu_vram}GiB  threads=$threads  vb=${vb}GiB  n=$max_tokens"
-echo "dump=$dump  gather=$gather  reload_window=$reload_window"
+echo "dump=$dump  gather=$gather  reload_window=$reload_window  threads=$threads  ctx=$ctx_size  b=$batch_size  ub=$ubatch_size  lambda=$lambda_init  tau=$(awk -v l=$lambda_init 'BEGIN{printf "%.3f", 1-l}')"
 #                                   ^^^^^^^^^^^^
 # ${gpu_vram}GiB 처럼 중괄호를 쓰는 이유: $gpu_vramGiB 라고 쓰면
 # 셸이 "gpu_vramGiB" 라는 이름의 변수를 찾아버린다. 변수명 경계를 명시하는 것.
@@ -164,8 +175,8 @@ echo "dump=$dump  gather=$gather  reload_window=$reload_window"
 env \
     CUDA_VISIBLE_DEVICES=0 \
     KAIROX_PARALLEL=1 \
-    KAIROX_DFR_LAMBDA_INIT=0.67 \
-    KAIROX_DFR_LAMBDA_ADAPT_RATE=0.05 \
+    KAIROX_DFR_LAMBDA_INIT="$lambda_init" \
+    KAIROX_DFR_LAMBDA_ADAPT_RATE="$lambda_adapt" \
     KAIROX_DUMP_ACTIVATION="$dump" \
     KAIROX_DUMP_ACTIVATION_PATH="$csv" \
     KAIROX_GATHER="$gather" \
@@ -182,6 +193,8 @@ env \
     -t "$threads" \
     -s "$seed" \
     -c "$ctx_size" \
+    -b "$batch_size" \
+    -ub "$ubatch_size" \
     -n "$max_tokens" \
     -p "$prompt" \
     --no-warmup \

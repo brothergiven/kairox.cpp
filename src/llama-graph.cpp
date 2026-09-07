@@ -1389,6 +1389,22 @@ ggml_tensor * llm_graph_context::build_sparse_ffn_hidden(ggml_tensor *& cur_up,
     return cur_hidden;
 }
 
+/**
+ * 이번 ubatch 에 이 레이어의 DFR 점수를 갱신할 활성화가 있는지.
+ *
+ * prefill 이 ubatch 여러 개로 쪼개지면 마지막이 아닌 ubatch 는 n_outputs == 0 이다
+ * (logits 은 프롬프트 맨 끝 토큰에만 필요하다). 그런데 마지막 레이어의 sparse_idx 는
+ * inp_out_ids 로 축소되므로 그런 ubatch 에서 [n_ff, 0] 이 되고, build_sparse_ffn_dfr 의
+ * reshape_2d 가 원소 0개를 받아 단언이 깨진다. 즉 이 가드가 없으면 KAIROX 는
+ * ubatch 하나(기본 512 토큰)를 넘는 프롬프트를 처리하지 못한다.
+ *
+ * 점수를 매길 활성화가 없으므로 그 레이어의 reload 를 이번 ubatch 에서 건너뛰는 것이
+ * 올바른 동작이다. 다른 레이어는 영향받지 않는다.
+ */
+static bool kairox_dfr_has_activations(const kairox_layer_cache * lc) {
+    return lc && lc->sparse_idx && lc->sparse_idx->ne[1] > 0;
+}
+
 ggml_tensor * llm_graph_context::build_sparse_ffn(ggml_tensor *       cur,
                                                   ggml_tensor *       inp_out_ids,
                                                   const llama_model * model,
@@ -1423,10 +1439,10 @@ ggml_tensor * llm_graph_context::build_sparse_ffn(ggml_tensor *       cur,
         ggml_build_forward_expand(gf, next_sparse_idx);
         next_kairox_lc->sparse_idx = next_sparse_idx;
 
-        if (build_reload_path) {
+        if (build_reload_path && kairox_dfr_has_activations(reload_kairox_lc)) {
             build_sparse_ffn_dfr(reload_kairox_lc, load_group, evict_group, threshold, il);
         }
-    } else if (build_reload_path) {
+    } else if (build_reload_path && kairox_dfr_has_activations(reload_kairox_lc)) {
         build_sparse_ffn_dfr(reload_kairox_lc, load_group, evict_group, threshold, il);
     }
 
@@ -1460,8 +1476,11 @@ ggml_tensor * llm_graph_context::build_sparse_ffn(ggml_tensor *       cur,
         ggml_build_forward_expand(gf, cur_gate);
     }
 
+    // load_group 이 없으면 이번 ubatch 에는 이 레이어의 점수를 갱신할 활성화가 없다.
+    const bool emit_reload = build_reload_path && load_group && evict_group;
+
     ggml_tensor * cur_reload_plan = nullptr;
-    if (build_reload_path) {
+    if (emit_reload) {
         cur_reload_plan = reload_kairox_lc->build_reload_plan(ctx0, load_group, evict_group);
 
         ggml_tensor * cur_reload_gate = nullptr;
@@ -1539,7 +1558,7 @@ ggml_tensor * llm_graph_context::build_sparse_ffn(ggml_tensor *       cur,
         kairox_set_node_state(sched, cur_down, KAIROX_SPLIT_AXPY_SPARSE);
     }
 
-    if (build_reload_path) {
+    if (emit_reload) {
         GGML_ASSERT(cur_reload_plan);
         ggml_tensor * cur_reload_down = reload_kairox_lc->build_reload_exec(ctx0, cur_reload_plan, KAIROX_FFN_DOWN);
         cb(cur_reload_down, "ffn_down_reload", reload_il);
