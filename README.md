@@ -236,12 +236,12 @@ FORCE=1 BENCH_RUNS=10 VBS="6" SIZES="8 16 32" bash bench_group_sweep.sh full
 
 - **실행 시간**은 `조합 수 x BENCH_RUNS x N`에 비례한다. `bench_group_sweep.sh full` 기본값은
   42조합이라 몇 시간 단위다. 축이나 `BENCH_RUNS`를 먼저 줄여서 경향을 본다.
-- 드라이버는 `group_sweep.sh`의 출력을 로그 파일로 보내므로 조합 하나가 끝나기 전까지 콘솔이
-  조용하다. 진행 상황은 `tail -f`로 본다:
+- 전체 출력은 로그 파일에 남고, 콘솔에는 진행을 알 수 있는 줄(gs 시작, 런별 t/s, `decode mean`,
+  CSV 기록 완료, warning/error)만 실시간으로 흐른다. 런 하나에 수십 초~수 분 걸리므로 그
+  간격만큼 조용한 것은 정상이다. 로그를 통째로 보려면:
 
   ```bash
-  tail -f group_sweep_logs/group_sweep__kairox__3080__completion__*__vb6.log \
-    | grep --line-buffered -E "group_size=|bench run attempt|decode mean"
+  tail -f group_sweep_logs/group_sweep__kairox__3080__completion__*__vb6.log
   ```
 
 - CSV는 프로세스가 **정상 종료할 때** 소멸자에서 쓰인다. `Ctrl+C`로 끊으면 그 조합은 파일이

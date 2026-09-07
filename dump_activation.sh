@@ -287,15 +287,26 @@ printf '\n'
 
 if [[ -n "$log" ]]; then
     mkdir -p "$(dirname "$log")"
-    env "${env_args[@]}" "${cmd_args[@]}" >"$log" 2>&1
+    # 전체 출력은 로그에 남기고(tee), 진행 상황을 알 수 있는 줄만 콘솔로 흘린다.
+    # 파일로만 보내면 런 하나(수십 초~수 분) 동안 콘솔이 완전히 조용해진다.
+    #   --line-buffered : 없으면 grep 이 4KB 쯤 모았다가 내보내서 여전히 끊겨 보인다.
+    env "${env_args[@]}" "${cmd_args[@]}" 2>&1 |
+        tee "$log" |
+        grep --line-buffered -E \
+            'bench run attempt|decode mean|wrote activation dump|^(warning|error):'
+
+    # 파이프라인에서는 $? 가 맨 끝 명령(grep)의 값이다. 일치하는 줄이 없으면 grep 은
+    # 1 을 돌려주므로 그대로 쓰면 멀쩡한 실행을 실패로 오해한다.
+    # PIPESTATUS 는 파이프라인 각 단계의 종료 코드를 담은 배열이고, [0] 이 본 프로그램이다.
+    status=${PIPESTATUS[0]}
 else
     env "${env_args[@]}" "${cmd_args[@]}"
-fi
 
-# $? = 직전 명령어의 종료 코드 (0 이면 성공).
-# 반드시 바로 다음 줄에서 받아야 한다. 중간에 echo 하나만 끼어도
-# 그 echo 의 종료 코드로 덮어써진다.
-status=$?
+    # $? = 직전 명령어의 종료 코드 (0 이면 성공).
+    # 반드시 바로 다음 줄에서 받아야 한다. 중간에 echo 하나만 끼어도
+    # 그 echo 의 종료 코드로 덮어써진다.
+    status=$?
+fi
 ((status == 0)) || echo "warning: 비정상 종료 (exit $status)" >&2
 
 # =============================================================================
