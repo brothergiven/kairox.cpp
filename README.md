@@ -158,6 +158,7 @@ BENCH_RUNS=2 BACKENDS="kairox" VBS="6" bash bench_group_sweep.sh full
 | `OUT_DIR` | `./group_sweep_logs` | 결과 디렉터리 |
 | `REGROUP` | `1` | 없는 model-split을 `regroup_model_split.py`로 생성. `0`이면 그 gs를 건너뜀 |
 | `REBUILD` | `0` | `1`이면 `build_rel`을 지우고 새로 빌드 |
+| `TOKEN_LATENCY` | `0` | `1`이면 per-token latency 패스를 조합마다 한 번 더 돈다 (4-4 참고) |
 | `FORCE` | `0` | `1`이면 이미 있는 CSV도 다시 측정 |
 
 출력:
@@ -211,12 +212,44 @@ VB=6 BACKEND=kairox \
 | `N` / `CTX` / `SEED` | `512` / `1024` / `42` | |
 | `IGNORE_EOS` | `1` | `--ignore-eos`로 N 토큰을 강제 생성 |
 | `OUT` / `LOG` / `SUMMARY` | `./kairox_activation.csv` / — / `1` | CSV 경로 / 실행 로그 / 요약표 출력 |
+| `TOKEN_LATENCY` / `TPOT_OUT` | `0` / `<OUT>_tpot.csv` | TPOT 패스로 전환 (4-4 참고) |
 
 프롬프트는 `--bench-prompt-file`로 넘어가고, 계측 카운터는 런 사이에 리셋되지 않으므로 CSV는
 **여러 프롬프트에 걸친 합계**가 된다. 워밍업 런도 카운터에 누적되기 때문에 `--bench-warmup 0`을
 쓴다.
 
-### 4-4. 재개와 재측정
+### 4-4. TPOT (per-token decode latency)
+
+**평균 TPOT는 항상 기록된다.** `decode mean`의 역수이므로 추가 실행 없이 요약표와
+`*_summary.csv`에 `tpot_ms` 열로 들어간다.
+
+```text
+TPOT(ms/token) = 1000 / decode mean(t/s)
+```
+
+분포까지 보려면 `TOKEN_LATENCY=1`을 준다. 조합마다 실행을 한 번 더 해서 토큰별 지연을
+받아 p50/p90/p99/max를 낸다. wasted rebalancing으로 생기는 stall은 평균보다 꼬리에서
+드러나므로 이쪽이 더 직접적인 지표다.
+
+```bash
+TOKEN_LATENCY=1 BACKENDS="kairox" VBS="6" bash bench_group_sweep.sh full
+```
+
+```text
+TPOT 분포 (ms/token, per-token 측정)
+backend      vb     gs        n       mean        p50        p90        p99
+kairox        6      8      511      88.06      84.66      88.98     250.45
+```
+
+결과는 조합별 `gs<N>_tpot.csv`(`token_index,latency_ms`)와 `tpot_summary.csv`에 남는다.
+
+별도 패스인 이유는 `llama-completion`의 제약 때문이다. `--bench-token-latency`는
+`--bench-prompt-file`과 같이 쓸 수 없고 `--bench-runs 1`만 받는다. 그래서 이 패스는
+프롬프트 하나(`PROMPT` 또는 `PROMPT_FILE`의 첫 줄)로 워밍업 1 + 측정 1런을 돈다.
+activation 덤프는 꺼진 채로 돌기 때문에 본 측정 CSV를 덮어쓰지 않는다. 대신 프롬프트
+구성이 본 측정과 다르므로, 평균 TPOT 열과 분포 표의 값은 정확히 일치하지 않는다.
+
+### 4-5. 재개와 재측정
 
 이미 CSV가 있는 조합은 건너뛴다. 축을 좁혀 돌린 뒤 넓혀서 다시 돌리면 새 조합만 측정하고,
 요약표는 매번 누적된 전체를 기준으로 다시 그린다.
@@ -232,7 +265,7 @@ FORCE=1 BENCH_RUNS=10 VBS="6" SIZES="8 16 32" bash bench_group_sweep.sh full
 
 표만 다시 그리고 싶을 때도 같은 명령을 다시 돌리면 된다 (전부 skip되고 CSV에서 표만 생성).
 
-### 4-5. 주의
+### 4-6. 주의
 
 - **실행 시간**은 `조합 수 x BENCH_RUNS x N`에 비례한다. `bench_group_sweep.sh full` 기본값은
   42조합이라 몇 시간 단위다. 축이나 `BENCH_RUNS`를 먼저 줄여서 경향을 본다.

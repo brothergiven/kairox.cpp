@@ -35,6 +35,11 @@ usage: [VAR=값 ...] bash bench_activation.sh [simple|full]
   PROMPT_FILE   프롬프트 집합 파일        (기본 ./prompts.txt)
   BENCH_RUNS    조합당 프롬프트 개수      (기본 5, simple 은 2)
 
+TPOT
+  평균 TPOT(ms/token) = 1000 / decode mean 은 항상 요약에 들어간다.
+  TOKEN_LATENCY 1 이면 조합마다 per-token latency 패스를 한 번 더 돌려
+                p50/p90/p99 분포까지 잰다 (조합당 프롬프트 1개, 워밍업 1 + 측정 1런).
+
 기타
   MODEL_DIR     모델 디렉터리             (기본 $HOME/SPIF-GGUF 또는 /root/SPIF-GGUF)
   MODEL         본 모델 .gguf
@@ -95,11 +100,18 @@ fi
 
 max_tokens=${N:-512}
 repeat=${REPEAT:-1}
+token_latency=${TOKEN_LATENCY:-0}
+
+# 이 변수는 여기서만 쓴다. 그대로 두면 자식 프로세스(group_sweep.sh -> dump_activation.sh)
+# 까지 상속돼 본 측정까지 TPOT 모드로 돌아버린다. 0 으로 덮어써서 내려보내고,
+# TPOT 패스를 부를 때만 그 호출에 한해 1 을 준다.
+export TOKEN_LATENCY=0
 out_dir=${OUT_DIR:-$repo_root/activation_logs}
 force=${FORCE:-0}
 rebuild=${REBUILD:-0}
 
 summary_csv=$out_dir/activation_summary.csv
+tpot_summary_csv=$out_dir/tpot_summary.csv
 
 # dump_activation.sh 는 환경변수로 설정을 받는다. 여기서 export 해두면
 # 루프 안에서는 조합마다 달라지는 값(BACKEND/VB/...)만 넘기면 된다.
@@ -154,6 +166,7 @@ echo " backends    : $backends"
 echo " vb          : $vbs"
 echo " group_size  : $group_sizes"
 echo " prompt      : ${PROMPT_FILE:-prompts.txt} x ${bench_runs}런"
+((token_latency)) && echo " tpot        : per-token latency 패스 켜짐 (조합당 1회 추가 실행)"
 echo " n / repeat  : $max_tokens / $repeat"
 echo " out_dir     : $out_dir"
 
@@ -210,6 +223,19 @@ run_one() {
     }
 
     printf '  decode: %s t/s\n' "$(decode_tps "$log")"
+
+    ((token_latency)) || return 0
+
+    # per-token latency 패스. activation 덤프는 꺼진 채로 돌기 때문에 위에서 만든
+    # CSV 를 건드리지 않는다 (dump_activation.sh 의 TOKEN_LATENCY 분기 참고).
+    local tpot_csv=$out_dir/${tag}_tpot.csv
+    if [[ -s "$tpot_csv" && "$force" != "1" ]]; then
+        return 0
+    fi
+
+    BACKEND="$backend" VB="$vb" MODEL="$model" MODEL_SPLIT="$split" \
+        TOKEN_LATENCY=1 TPOT_OUT="$tpot_csv" LOG="$out_dir/${tag}_tpot.log" \
+        bash dump_activation.sh || echo "warning: TPOT 패스 실패 ($tag)" >&2
 }
 
 for backend in $backends; do
@@ -234,10 +260,10 @@ echo
 echo "=============================================================="
 echo " 요약"
 echo "=============================================================="
-printf "%-10s %4s %5s %4s %10s %10s %12s %12s %10s\n" \
-    backend vb gs rep hit/res hit/act wasted/tot loads decode
+printf "%-10s %4s %5s %4s %10s %10s %12s %12s %10s %10s\n" \
+    backend vb gs rep hit/res hit/act wasted/tot loads decode tpot_ms
 
-echo "backend,vb,group_size,repeat,hit_over_resident,hit_over_activation,wasted_over_total,total_loads,wasted_loads,decode_tps" >"$summary_csv"
+echo "backend,vb,group_size,repeat,hit_over_resident,hit_over_activation,wasted_over_total,total_loads,wasted_loads,decode_tps,tpot_ms" >"$summary_csv"
 
 for backend in $backends; do
     for vb in $vbs; do
@@ -249,19 +275,61 @@ for backend in $backends; do
                 [[ -s "$csv" ]] || continue
                 tps=$(decode_tps "$out_dir/${tag}.log")
 
+                # TPOT(ms/token) 은 decode 처리량의 역수다. 512 토큰을 12 t/s 로 뽑았다면
+                # 토큰 하나에 1000/12 = 83.3 ms 가 걸렸다는 뜻.
                 # CSV 컬럼: 1=layer 2=neuron 3=activation 4=resident 5=hit 6=total_loads 7=wasted_loads
                 awk -F, -v b="$backend" -v vb="$vb" -v gs="$gs" -v rep="$rep" -v tps="${tps:-0}" \
                     -v out="$summary_csv" '
                     NR>1 { a+=$3; r+=$4; h+=$5; t+=$6; w+=$7 }
                     END {
                         hr = (r ? h/r*100 : 0); ha = (a ? h/a*100 : 0); ws = (t ? w/t*100 : 0)
-                        printf "%-10s %4s %5s %4s %9.2f%% %9.2f%% %11.2f%% %12d %10s\n", b, vb, gs, rep, hr, ha, ws, t, tps
-                        printf "%s,%s,%s,%s,%.4f,%.4f,%.4f,%d,%d,%s\n", b, vb, gs, rep, hr, ha, ws, t, w, tps >> out
+                        tpot = (tps + 0 > 0) ? 1000 / tps : 0
+                        printf "%-10s %4s %5s %4s %9.2f%% %9.2f%% %11.2f%% %12d %10s %10.2f\n", b, vb, gs, rep, hr, ha, ws, t, tps, tpot
+                        printf "%s,%s,%s,%s,%.4f,%.4f,%.4f,%d,%d,%s,%.3f\n", b, vb, gs, rep, hr, ha, ws, t, w, tps, tpot >> out
                     }' "$csv"
             done
         done
     done
 done
+
+if ((token_latency)); then
+    echo
+    echo "TPOT 분포 (ms/token, per-token 측정)"
+    printf "%-10s %4s %5s %4s %8s %10s %10s %10s %10s\n" \
+        backend vb gs rep n mean p50 p90 p99
+
+    echo "backend,vb,group_size,repeat,n,mean_ms,p50_ms,p90_ms,p99_ms,max_ms" >"$tpot_summary_csv"
+
+    for backend in $backends; do
+        for vb in $vbs; do
+            for gs in $group_sizes; do
+                for ((rep = 1; rep <= repeat; rep++)); do
+                    tag="${bench_group}__${backend}__3080__completion__${model_name}__gs${gs}__vb${vb}"
+                    ((repeat > 1)) && tag="${tag}__r${rep}"
+                    tpot_csv=$out_dir/${tag}_tpot.csv
+                    [[ -s "$tpot_csv" ]] || continue
+
+                    # CSV 컬럼: 1=token_index 2=latency_ms
+                    tail -n +2 "$tpot_csv" | cut -d, -f2 | sort -n |
+                        awk -v b="$backend" -v vb="$vb" -v gs="$gs" -v rep="$rep" \
+                            -v out="$tpot_summary_csv" '
+                            function q(p,   i) {
+                                i = int(p * n + 0.999999)
+                                if (i < 1) { i = 1 }
+                                if (i > n) { i = n }
+                                return v[i]
+                            }
+                            { n = NR; v[NR] = $1; sum += $1 }
+                            END {
+                                if (n == 0) { exit }
+                                printf "%-10s %4s %5s %4s %8d %10.2f %10.2f %10.2f %10.2f\n", b, vb, gs, rep, n, sum/n, q(0.50), q(0.90), q(0.99)
+                                printf "%s,%s,%s,%s,%d,%.3f,%.3f,%.3f,%.3f,%.3f\n", b, vb, gs, rep, n, sum/n, q(0.50), q(0.90), q(0.99), v[n] >> out
+                            }'
+                done
+            done
+        done
+    done
+fi
 
 echo
 echo "레이어별 hit/act (조합 비교)"
@@ -297,3 +365,4 @@ done
 echo
 echo "csv     : $out_dir/"
 echo "summary : $summary_csv"
+((token_latency)) && echo "tpot    : $tpot_summary_csv"

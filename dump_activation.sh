@@ -58,6 +58,14 @@ backend 프로파일 (test_kairox.sh 의 backend 표와 동일)
                  특정 프롬프트에 치우치지 않은 activation 통계가 나온다
   PROMPT       문자열을 직접 주면 그 프롬프트 하나만 돌린다 (PROMPT_FILE 무시)
 
+TPOT (per-token decode latency)
+  TOKEN_LATENCY 1 이면 activation 계측 대신 per-token latency 를 측정한다 (기본 0)
+                  llama-completion 의 --bench-token-latency 는 --bench-prompt-file 과
+                  같이 쓸 수 없고 --bench-runs 1 만 받는다. 그래서 프롬프트 하나로
+                  (PROMPT 또는 PROMPT_FILE 의 첫 줄) 워밍업 1 + 측정 1 런을 돈다.
+                  이 패스에서는 activation 덤프를 끄므로 OUT 의 CSV 를 건드리지 않는다.
+  TPOT_OUT      per-token latency CSV 경로       (기본 <OUT>_tpot.csv)
+
 출력
   OUT          activation CSV 경로              (기본 ./kairox_activation.csv)
   LOG          실행 로그 경로. 주면 stdout/stderr 를 여기로 보낸다
@@ -143,6 +151,9 @@ ignore_eos=${IGNORE_EOS:-1}
 summary=${SUMMARY:-1}
 csv=${OUT:-$repo_root/kairox_activation.csv}
 log=${LOG:-}
+token_latency=${TOKEN_LATENCY:-0}
+# ${var%.csv} 는 변수 값 끝의 ".csv" 를 떼어낸다 (셸의 접미사 제거 문법).
+tpot_csv=${TPOT_OUT:-${csv%.csv}_tpot.csv}
 
 # 프롬프트는 두 갈래다.
 #   prompt_mode=bench  : prompts.txt 같은 프롬프트 집합을 --bench-prompt-file 로 넘긴다.
@@ -179,6 +190,14 @@ case "$bench_runs" in
 esac
 ((bench_runs > 0)) || die "BENCH_RUNS 는 1 이상이어야 한다: $bench_runs"
 
+# --bench-token-latency 는 프롬프트 집합을 받지 못한다. bench 모드로 잡혔다면
+# 집합의 첫 줄(빈 줄 제외)을 단일 프롬프트로 승격시킨다.
+#   grep -m1 . : 내용이 있는 첫 줄 하나만
+if ((token_latency)) && [[ "$prompt_mode" == "bench" ]]; then
+    prompt=$(grep -m1 . "$prompt_file") || die "프롬프트를 읽지 못했다: $prompt_file"
+    prompt_mode=single
+fi
+
 # =============================================================================
 # 사전 점검
 # =============================================================================
@@ -207,14 +226,22 @@ done
 
 # 이전 실행 결과가 남아 있으면 지운다.
 # -f 는 파일이 없어도 에러를 내지 않는 옵션 (force). set -u 와 무관하다.
-rm -f "$csv"
+# TPOT 패스는 activation 덤프를 끄고 도는 별개의 실행이므로, 이미 측정해 둔
+# activation CSV 를 지우면 안 된다.
+if ((token_latency)); then
+    rm -f "$tpot_csv"
+else
+    rm -f "$csv"
+fi
 
 echo "platform=$platform gpu_vram=${gpu_vram}GiB threads=$threads vb=${vb}GiB" \
      "backend=$backend lambda=$lambda_init/$lambda_adapt n=$max_tokens ignore_eos=$ignore_eos"
 #             ^^^^^^^^^^^^
 # ${gpu_vram}GiB 처럼 중괄호를 쓰는 이유: $gpu_vramGiB 라고 쓰면
 # 셸이 "gpu_vramGiB" 라는 이름의 변수를 찾아버린다. 변수명 경계를 명시하는 것.
-if [[ "$prompt_mode" == "bench" ]]; then
+if ((token_latency)); then
+    echo "mode=TPOT (per-token latency, activation 덤프 off)  prompt=단일 (${#prompt}자)"
+elif [[ "$prompt_mode" == "bench" ]]; then
     echo "prompt=$(basename "$prompt_file") x ${bench_runs}런 (한 줄 = 프롬프트 하나)"
 else
     echo "prompt=단일 문자열 (${#prompt}자)"
@@ -245,9 +272,18 @@ env_args=(
     KAIROX_PARALLEL=1
     "KAIROX_DFR_LAMBDA_INIT=$lambda_init"
     "KAIROX_DFR_LAMBDA_ADAPT_RATE=$lambda_adapt"
-    KAIROX_DUMP_ACTIVATION=1
-    "KAIROX_DUMP_ACTIVATION_PATH=$csv"
 )
+
+# TPOT 패스는 latency 만 재는 별개 실행이라 덤프를 끈다. 켜두면 프롬프트 1개짜리
+# 결과가 본 측정 CSV 를 덮어써버린다.
+if ((token_latency)); then
+    env_args+=(KAIROX_DUMP_ACTIVATION=0)
+else
+    env_args+=(
+        KAIROX_DUMP_ACTIVATION=1
+        "KAIROX_DUMP_ACTIVATION_PATH=$csv"
+    )
+fi
 
 cmd_args=(
     "$bin"
@@ -268,7 +304,20 @@ cmd_args=(
 
 # --bench-warmup 0 : 워밍업 런의 activation 도 카운터에 누적되므로 반드시 0 이어야 한다.
 # --bench-no-print : 생성 텍스트를 로그에 찍지 않는다 (런당 512 토큰 x N 이라 로그가 커진다).
-if [[ "$prompt_mode" == "bench" ]]; then
+#
+# TPOT 패스만 예외로 --bench-warmup 1 을 쓴다. bench 모드 진입 조건이
+#   prompt_file 이 있거나 || bench_runs > 1 || bench_warmup > 0
+# 인데, --bench-token-latency 는 bench_runs 를 1 로 강제하고 프롬프트 집합도 못 쓰므로
+# 워밍업을 1 로 둬야 bench 모드로 들어간다. 여기선 activation 덤프가 꺼져 있어
+# 워밍업이 카운터를 오염시킬 걱정이 없고, 오히려 첫 런의 캐시 워밍업 효과를 걷어내 준다.
+if ((token_latency)); then
+    cmd_args+=(
+        -p "$prompt"
+        --bench-token-latency
+        --bench-warmup 1
+        --bench-no-print
+    )
+elif [[ "$prompt_mode" == "bench" ]]; then
     cmd_args+=(
         --bench-prompt-file "$prompt_file"
         --bench-runs "$bench_runs"
@@ -280,6 +329,14 @@ else
 fi
 
 ((ignore_eos)) && cmd_args+=(--ignore-eos)
+
+# TPOT 패스는 로그의 "token latency ms: [...]" 줄을 파싱해야 한다.
+# LOG 를 안 줬으면 임시 파일에 받아둔다 (mktemp: 겹치지 않는 임시 파일을 만들어 경로를 출력).
+tmp_log=
+if ((token_latency)) && [[ -z "$log" ]]; then
+    tmp_log=$(mktemp) || die "임시 로그 파일 생성 실패"
+    log=$tmp_log
+fi
 
 # %q 는 "셸에 다시 붙여넣어도 그대로 돌아가는 형태" 로 따옴표를 붙여 출력한다.
 printf '%q ' env "${env_args[@]}" "${cmd_args[@]}"
@@ -294,6 +351,7 @@ if [[ -n "$log" ]]; then
         tee "$log" |
         grep --line-buffered -E \
             'bench run attempt|decode mean|wrote activation dump|^(warning|error):'
+    # "token latency ms: [...]" 줄은 숫자 수백 개짜리라 콘솔로 흘리지 않는다 (로그에는 남는다).
 
     # 파이프라인에서는 $? 가 맨 끝 명령(grep)의 값이다. 일치하는 줄이 없으면 grep 은
     # 1 을 돌려주므로 그대로 쓰면 멀쩡한 실행을 실패로 오해한다.
@@ -308,6 +366,57 @@ else
     status=$?
 fi
 ((status == 0)) || echo "warning: 비정상 종료 (exit $status)" >&2
+
+# =============================================================================
+# TPOT (per-token decode latency)
+# =============================================================================
+
+if ((token_latency)); then
+    # 로그의 한 줄:  "  token latency ms: [12.345, 11.222, ...]"
+    #   sed  : 대괄호 앞뒤를 잘라내 숫자 목록만 남긴다
+    #   tr   : 콤마를 줄바꿈으로 바꿔 한 줄에 하나씩
+    #   grep : 빈 줄 제거
+    latencies=$(grep -h "token latency ms" "$log" | tail -1 |
+        sed 's/.*\[//; s/\].*//' | tr ',' '\n' | tr -d ' ' | grep -v '^$')
+
+    [[ -n "$latencies" ]] || die "token latency 를 찾지 못했다 ($log)
+  - --bench-token-latency 가 먹었는지 (bench 모드 진입 = --bench-warmup 1 필요)
+  - 실행이 중간에 죽지 않았는지"
+
+    mkdir -p "$(dirname "$tpot_csv")"
+    { echo "token_index,latency_ms"
+      echo "$latencies" | awk '{ printf "%d,%s\n", NR - 1, $1 }'
+    } >"$tpot_csv"
+
+    # 백분위수는 정렬된 값에서 뽑는다. awk 배열에 다 담고 인덱스로 집는다.
+    #   int(n * p) 방식의 nearest-rank. 표본이 수백 개라 보간까지는 필요 없다.
+    echo
+    echo "=== TPOT (ms/token) ==="
+    # nearest-rank 백분위수: 정렬된 n 개 중 ceil(p*n) 번째 값.
+    # 함수 인자 뒤의 여백(i)은 awk 에서 지역 변수를 만드는 관용적 방법이다.
+    echo "$latencies" | sort -n | awk '
+        function q(p,   i) {
+            i = int(p * n + 0.999999)
+            if (i < 1) { i = 1 }
+            if (i > n) { i = n }
+            return v[i]
+        }
+        { n = NR; v[NR] = $1; sum += $1 }
+        END {
+            if (n == 0) { print "  샘플 없음"; exit }
+            printf "  n      : %d\n", n
+            printf "  mean   : %8.3f\n", sum / n
+            printf "  p50    : %8.3f\n", q(0.50)
+            printf "  p90    : %8.3f\n", q(0.90)
+            printf "  p99    : %8.3f\n", q(0.99)
+            printf "  max    : %8.3f\n", v[n]
+        }'
+
+    echo
+    echo "csv: $tpot_csv"
+    [[ -n "$tmp_log" ]] && rm -f "$tmp_log"
+    exit 0
+fi
 
 # =============================================================================
 # 결과 요약
