@@ -154,6 +154,33 @@ KAIROX_PROFILE=1 KAIROX_PROFILE_PATH=prof.csv <기존 실행 명령 그대로>
 
 출력 (`bucket,calls,total_ms,per_step_ms,per_call_us`).
 
+### group_size 스윕과 함께
+
+`dump_activation.sh` 에 `PROFILE` / `BENCH_RUNS` 를 붙여서, gs 스윕을 돌면 gs 마다
+프로파일 CSV 가 따로 남는다.
+
+```sh
+PROFILE=1 BENCH_RUNS=10 SIZES="2 4 8 16 32 64 128" bash group_sweep.sh
+# -> dumps/gs2.csv, dumps/gs2_prof.csv, gs4.csv, gs4_prof.csv, ...
+```
+
+핵심은 프로파일 CSV 경로를 `OUT` 에서 파생시킨다는 점이다(`gs16.csv -> gs16_prof.csv`).
+`KAIROX_PROFILE_PATH` 를 셸에서 한 번 export 하면 gs 7개가 같은 파일에 써서 마지막
+것만 남는다.
+
+`group_sweep.sh` 끝에 gs 별 비교표가 붙는다:
+
+```text
+스텝 시간 분해 (ms/step)
+gs           topk      score       pcie      stall   step_total      compute
+8           1.000      0.926    150.000     13.769      146.404      130.709
+16          0.500      0.926     75.000     13.769      146.404      131.209
+```
+
+`BENCH_RUNS` (기본 5) 는 `prompts.txt` 에서 앞에서부터 몇 개의 프롬프트를 돌릴지다.
+프롬프트 하나로 재면 그 프롬프트의 활성화 패턴에 통째로 끌려가므로, gs 비교에는
+여러 개를 돌려야 한다. `PROMPT="..."` 로 문자열을 직접 주면 단일 프롬프트 모드가 된다.
+
 ## 6. 검증 결과
 
 3070 / vb=6 / gs=16 / 8토큰:
@@ -186,9 +213,9 @@ sparse_launch,512,5.267,0.658330,10.286
 3. `topk`+`score`+`pcie` 의 합은 `step_total` 을 넘을 수 있다(메인 스트림과 워커가 병렬).
    `stall` 이 그중 노출된 몫이라는 해석이 전제다.
 4. 분류기에 `ffn_load_group`/`ffn_evict_group` 매칭이 남아 있는데, 개명 이후 죽은 코드다.
-5. 아직 **gs 축 스윕을 돌리지 않았다.** 다음 단계는 gs 2~128 x `KAIROX_GATHER` on/off 로
-   `score` 가 평평한지, `topk` 가 1024 경계에서 뛰는지, `pcie` 가 호출 수를 따라가는지를
-   보는 것이다.
+5. 아직 **gs 축 스윕을 돌리지 않았다.** 스크립트 배선은 끝났으므로(5절) 남은 것은 실행이다.
+   봐야 할 것: `score` 가 gs 와 무관하게 평평한지, `topk` 가 n_group 1024 경계(gs 16 -> 8)
+   에서 뛰는지, `pcie` 가 호출 수를 따라가고 그중 `stall` 로 노출되는 몫이 얼마인지.
 
 ## 8. 전체 diff
 

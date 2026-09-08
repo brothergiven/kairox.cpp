@@ -73,6 +73,35 @@ for gs in $sizes; do
         }' "$csv"
 done
 
+# 스텝 시간 분해 비교 (PROFILE=1 로 돌렸을 때만) --------------------------------
+#
+# dump_activation.sh 가 프로파일 CSV 경로를 OUT 에서 파생시키므로(gsN.csv -> gsN_prof.csv)
+# 여기서는 그 규칙대로 읽기만 하면 된다.
+#
+# 이 표가 이 실험의 핵심이다. gs 를 줄일 때
+#   score 가 평평하고 topk 만 커지면  -> 결정 항의 정체는 top-k (1024 CUB 폴백 포함)
+#   score 까지 같이 커지면            -> 뉴런 수 비례라는 가정이 틀린 것
+#   pcie 가 호출 수를 따라가고 stall 이 그만큼 늘면 -> 전송 고정비가 크리티컬 패스
+if compgen -G "$out_dir/gs*_prof.csv" >/dev/null; then
+    echo
+    echo "스텝 시간 분해 (ms/step)"
+    printf "%-6s %10s %10s %10s %10s %12s %12s\n" \
+        gs topk score pcie stall step_total compute
+    for gs in $sizes; do
+        prof=$out_dir/gs${gs}_prof.csv
+        [[ -s "$prof" ]] || continue
+        # 프로파일 CSV 컬럼: 1=bucket 2=calls 3=total_ms 4=per_step_ms 5=per_call_us
+        awk -F, -v gs="$gs" 'NR>1 { ms[$1] = $4 }
+            END {
+                # compute 는 잔차. pcie 는 워커에서 병렬로 도니 빼지 않는다
+                # (그중 노출된 몫이 stall 이다).
+                printf "%-6s %10.3f %10.3f %10.3f %10.3f %12.3f %12.3f\n",
+                    gs, ms["topk"], ms["score"], ms["pcie"], ms["stall"], ms["step_total"],
+                    ms["step_total"] - ms["stall"] - ms["topk"] - ms["score"]
+            }' "$prof"
+    done
+fi
+
 echo
 echo "레이어별 hit/act 비교"
 printf "%-6s" layer

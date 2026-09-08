@@ -33,7 +33,15 @@ usage: [PLATFORM=3070] [VB=N] [N=512] [OUT=path.csv] [MODEL_DIR=dir] [PROMPT_FIL
   MODEL_SPLIT path of model-split .gguf (overrides MODEL_DIR default)
   BIN         path of prebuilt llama-completion (skips local build_rel)
   IGNORE_EOS  1 = generate exactly N tokens (fixes run length for comparisons)
-  PROMPT_FILE path of prompt file
+
+  프롬프트 (한 줄 = 프롬프트 하나인 집합. bench_models.sh 와 같은 방식)
+  PROMPT_FILE 프롬프트 집합 파일                    (기본 ./prompts.txt)
+  BENCH_RUNS  그 집합에서 앞에서부터 몇 개를 돌릴지 (기본 5)
+  PROMPT      문자열을 직접 주면 그 프롬프트 하나만 (PROMPT_FILE 무시)
+
+  스텝 시간 분해 계측 (STEP_PROFILING.md)
+  PROFILE     1 이면 KAIROX_PROFILE 을 켠다          (기본 0)
+  PROFILE_OUT 프로파일 CSV 경로                      (기본 <OUT>_prof.csv)
 EOF
   exit 1
 }
@@ -54,7 +62,7 @@ case "$platform" in
   vb_default=6
   ;;
 *)
-  echo "error: unknown platform '$platform'" >^2 # 표준 출력이 아니라 표준 에러로 내보낸다
+  echo "error: unknown platform '$platform'" >&2 # 표준 출력이 아니라 표준 에러로 내보낸다
   usage
   ;;
 esac
@@ -94,23 +102,74 @@ reload_window=${RELOAD_WINDOW:-4}
 lambda_init=${LAMBDA:-0.67}
 lambda_adapt=${LAMBDA_ADAPT:-0.05}
 
+# PROFILE=1 이면 스텝 시간 분해 계측을 켠다(STEP_PROFILING.md).
+# 프로파일 CSV 경로를 OUT 에서 파생시키는 게 핵심이다 — group_sweep.sh 는 gs 마다
+# OUT 을 다르게 주므로, 이렇게 두면 스윕에서 gs 별 프로파일이 자동으로 갈린다.
+# 한 경로로 고정하면 마지막 gs 만 남는다.
+#   ${var%.csv} : 변수 값 끝의 ".csv" 를 떼어낸다 (셸의 접미사 제거 문법)
+profile=${PROFILE:-0}
+profile_csv=${PROFILE_OUT:-${csv%.csv}_prof.csv}
+
 # 조건부 인자는 배열에 담아 넘긴다. 빈 배열은 "${arr[@]}" 로 펼치면 인자 0개가 되어 안전하다.
 eos_args=()
 [[ "$ignore_eos" == 1 ]] && eos_args=(--ignore-eos)
 
-# -n "$X" : 문자열이 비어있지 않다면  참
-# ${PROMPT_FILE:-} 는 PROMPT_FILE이 존재하지 않으면 빈 문자열을 반환함
-if [[ -n "${PROMPT_FILE:-}" ]] then #
-  # -f 는 파일이 존재하는지 검사
-  # A || B 는 A가 실패하면 B를 실행.
-  [[ -f "$PROMPT_FILE" ]] || { echo "error: PROMPT_FILE 없음: $PROMPT_FILE" >&2; exit 1; }
-  prompt=$(<"$PROMPT_FILE") # $(<파일) : 파일 내용을 통쨰로 읽어 값으로 사용.
+die() { echo "error: $*" >&2; exit 1; }
+
+# =============================================================================
+# 프롬프트
+# =============================================================================
+#
+# prompts.txt 는 한 줄에 프롬프트 하나인 14,339줄짜리 집합이다. 통째로 -p 에 넣으면
+# ctx 를 넘겨 잘리므로, llama-completion 의 --bench-prompt-file 로 넘겨 한 줄씩
+# BENCH_RUNS 개를 앞에서부터 돌린다(bench_models.sh 와 같은 경로).
+#
+# 계측 카운터는 런 사이에 리셋되지 않고 누적되므로, 결과 CSV 는 "여러 프롬프트에 걸친
+# 합계"가 된다. 프롬프트 하나로 재면 그 프롬프트의 활성화 패턴에 통째로 끌려가므로
+# group_size 비교에는 여러 개를 돌리는 쪽이 안정적이다.
+#
+#   prompt_mode=bench  : --bench-prompt-file 로 집합을 넘긴다
+#   prompt_mode=single : -p 로 문자열 하나를 넘긴다
+prompt_file=${PROMPT_FILE:-$repo_root/prompts.txt}
+bench_runs=${BENCH_RUNS:-5}
+
+# -n "$X" : 문자열이 비어있지 않다면 참
+# ${PROMPT:-} 는 PROMPT 가 정의되지 않았으면 빈 문자열을 반환함
+if [[ -n "${PROMPT:-}" ]]; then
+  prompt_mode=single
+  prompt=$PROMPT
+elif [[ -f "$prompt_file" ]]; then # -f 는 파일이 존재하는지 검사
+  prompt_mode=bench
+  prompt=
 else
-    prompt='Implement and compare multiple sorting algorithms in Python, including quicksort, mergesort, heapsort, and insertion sort. For each algorithm, provide clean implementations, analyze time and space complexity, and discuss when it performs best.
+  # PROMPT_FILE 을 명시했는데 없으면 오타일 가능성이 높으니 그냥 죽인다.
+  # A || B 는 A가 실패하면 B를 실행.
+  [[ -z "${PROMPT_FILE:-}" ]] || die "PROMPT_FILE 없음: $PROMPT_FILE"
+  # prompts.txt 조차 없을 때만 쓰는 폴백.
+  prompt_mode=single
+  prompt='Implement and compare multiple sorting algorithms in Python, including quicksort, mergesort, heapsort, and insertion sort. For each algorithm, provide clean implementations, analyze time and space complexity, and discuss when it performs best.
   ```python'
 fi
 
-die() { echo "error: $*" >&2; exit 1; }
+case "$bench_runs" in
+'' | *[!0-9]*) die "BENCH_RUNS 는 정수여야 한다: $bench_runs" ;;
+esac
+((bench_runs > 0)) || die "BENCH_RUNS 는 1 이상이어야 한다: $bench_runs"
+
+# 조건부 인자는 배열에 담아 넘긴다. 빈 배열은 "${arr[@]}" 로 펼치면 인자 0개가 되어 안전하다.
+#
+# --bench-warmup 0 : 워밍업 런의 activation 도 카운터에 누적되므로 반드시 0 이어야 한다.
+# --bench-no-print : 생성 텍스트를 찍지 않는다 (런당 512 토큰 x N 이라 로그가 커진다).
+if [[ "$prompt_mode" == "bench" ]]; then
+  prompt_args=(
+    --bench-prompt-file "$prompt_file"
+    --bench-runs "$bench_runs"
+    --bench-warmup 0
+    --bench-no-print
+  )
+else
+  prompt_args=(-p "$prompt")
+fi
 
 # BIN 을 주면 다른 클론에 이미 빌드된 바이너리를 그대로 쓴다.
 # group_size 는 model-split GGUF 에서 런타임에 읽으므로 스윕에 재빌드가 필요 없고,
@@ -146,8 +205,15 @@ done
 # 이전 실행 결과가 남아 있으면 지운다.
 # -f 는 파일이 없어도 에러를 내지 않는 옵션 (force). set -u 와 무관하다.
 rm -f "$csv"
+[[ "$profile" == 1 ]] && rm -f "$profile_csv"
 
 echo "platform=$platform  gpu_vram=${gpu_vram}GiB  threads=$threads  vb=${vb}GiB  n=$max_tokens"
+if [[ "$prompt_mode" == "bench" ]]; then
+    echo "prompt=$(basename "$prompt_file") x ${bench_runs}런 (한 줄 = 프롬프트 하나)"
+else
+    echo "prompt=단일 문자열 (${#prompt}자)"
+fi
+[[ "$profile" == 1 ]] && echo "profile=on  -> $profile_csv"
 echo "dump=$dump  gather=$gather  reload_window=$reload_window  threads=$threads  ctx=$ctx_size  b=$batch_size  ub=$ubatch_size  lambda=$lambda_init  tau=$(awk -v l=$lambda_init 'BEGIN{printf "%.3f", 1-l}')"
 #                                   ^^^^^^^^^^^^
 # ${gpu_vram}GiB 처럼 중괄호를 쓰는 이유: $gpu_vramGiB 라고 쓰면
@@ -181,6 +247,8 @@ env \
     KAIROX_DUMP_ACTIVATION_PATH="$csv" \
     KAIROX_GATHER="$gather" \
     KAIROX_RELOAD_WINDOW="$reload_window" \
+    KAIROX_PROFILE="$profile" \
+    KAIROX_PROFILE_PATH="$profile_csv" \
     "$bin" \
     -m "$model" \
     -kairox-ms "$model_split" \
@@ -196,8 +264,8 @@ env \
     -b "$batch_size" \
     -ub "$ubatch_size" \
     -n "$max_tokens" \
-    -p "$prompt" \
     --no-warmup \
+    "${prompt_args[@]}" \
     "${eos_args[@]}"
 
 # $? = 직전 명령어의 종료 코드 (0 이면 성공).
@@ -212,6 +280,27 @@ status=$?
 
 # -s : 파일이 존재하고 크기가 0 보다 큰가.
 # die 에 넘기는 문자열이 여러 줄인데, 큰따옴표 안에서는 줄바꿈이 그대로 유지된다.
+# 스텝 시간 분해 결과를 먼저 보여준다 (activation 계측과 독립적으로 켤 수 있다).
+if [[ "$profile" == 1 ]]; then
+    if [[ -s "$profile_csv" ]]; then
+        echo
+        echo "=== 스텝 시간 분해 (ms/step) ==="
+        # ① compute 는 잔차다: step_total - stall - topk - score.
+        #    메인 스트림과 워커가 병렬로 돌기 때문에 pcie 는 합에 넣지 않는다
+        #    (그중 실제로 노출된 몫이 stall 이다).
+        awk -F, 'NR>1 { ms[$1] = $4; calls[$1] = $2 }
+            END {
+                printf "  %-14s %10s %12s\n", "bucket", "ms/step", "calls"
+                for (b in ms) printf "  %-14s %10.3f %12d\n", b, ms[b], calls[b]
+                printf "  %-14s %10.3f %12s\n", "compute(잔차)",
+                       ms["step_total"] - ms["stall"] - ms["topk"] - ms["score"], "-"
+            }' "$profile_csv" | sort -k2 -r
+        echo "  profile csv: $profile_csv"
+    else
+        echo "warning: 프로파일 CSV 없음: $profile_csv (정상 종료했는지 확인)" >&2
+    fi
+fi
+
 # 계측을 껐으면 CSV 가 없는 게 정상이므로 여기서 끝낸다.
 [[ "$dump" == 1 ]] || exit "$status"
 
