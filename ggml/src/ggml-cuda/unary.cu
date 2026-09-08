@@ -644,6 +644,14 @@ void ggml_cuda_op_shifted_step(ggml_backend_cuda_context & ctx, ggml_tensor * ds
     float threshold;
     memcpy(&threshold, dst->op_params, sizeof(float));
 
+    // ggml_shifted_step_dyn: threshold 가 그래프에 상수로 박혀있지 않고 호스트 메모리에 있다.
+    // 그래프가 재사용되어도 매 실행마다 최신 값을 읽는다.
+    if (dst->op_params[1] != 0) {
+        const float * threshold_src = nullptr;
+        memcpy(&threshold_src, &dst->op_params[2], sizeof(threshold_src));
+        threshold = *threshold_src;
+    }
+
     if (src0->type == GGML_TYPE_F16) {
         shifted_step_cuda((const half *)src0_d, (half *)dst_d, ggml_nelements(src0), threshold, stream);
     } else {

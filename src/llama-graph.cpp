@@ -1322,11 +1322,15 @@ void llm_graph_context::build_sparse_ffn_dfr(kairox_layer_cache * lc,
     */
 
     /**
-     * 지금의 tau 필터링은 그룹 단위로 수행되고 있다. 이걸 사실 뉴런 단위로 해야하는 것 아닌가? 
+     * 지금의 tau 필터링은 그룹 단위로 수행되고 있다. 이걸 사실 뉴런 단위로 해야하는 것 아닌가?
      */
-    const float tau = (1.0f - *(float *) lc->dfr_ema_coeffs->data) + 1e-6f;
+    /**
+     * tau 는 lambda 에서 유도되는데(Algorithm 1 line 8), ANB 가 켜지면 lambda 가 스텝마다 바뀐다.
+     * 그래프는 디코드 중 재사용되므로 빌드 시점 값을 op_params 에 구우면 첫 스텝 값에 고정된다.
+     * lc->dfr_neg_tau 를 가리키게 해서 커널이 매 실행마다 최신 -tau 를 읽도록 한다.
+     */
     // mask 값이 0이면 topk에 포함되지 않도록
-    ggml_tensor * threshold_mask = ggml_shifted_step(ctx0, dfr_scores, -tau, false);
+    ggml_tensor * threshold_mask = ggml_shifted_step_dyn(ctx0, dfr_scores, &lc->dfr_neg_tau, false);
     ggml_tensor * filtered_dfr_scores = ggml_mul(ctx0, dfr_scores, threshold_mask);
 
     // 계산된 DFR 점수에 따라 top-k 그룹을 선택. argsort() API 사용 !

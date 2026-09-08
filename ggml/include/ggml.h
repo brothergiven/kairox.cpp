@@ -1179,6 +1179,13 @@ extern "C" {
             struct ggml_context * ctx,
             struct ggml_tensor * a, float threshold, bool inplace);
 
+    // threshold 를 그래프 빌드 시점에 굽지 않고, 실행 시점에 호스트 메모리에서 읽는 변형.
+    // threshold 가 스텝마다 바뀌는데 그래프는 재사용되는 경우(KAIROX 의 tau_load)에 쓴다.
+    // 가리키는 float 은 그래프가 살아있는 동안 유효해야 하며, CPU 에서 읽을 수 있어야 한다.
+    GGML_API struct ggml_tensor * ggml_shifted_step_dyn(
+            struct ggml_context * ctx,
+            struct ggml_tensor * a, const float * threshold, bool inplace);
+
     GGML_API struct ggml_tensor * ggml_relu_inplace(
             struct ggml_context * ctx,
             struct ggml_tensor  * a);

@@ -2821,7 +2821,28 @@ struct ggml_tensor * ggml_shifted_step(
         bool                  inplace) {
     struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
 
+    // op_params: [0] = threshold, [1] = dyn 플래그(0), [2..3] = 미사용
     ggml_set_op_params(result, &threshold, sizeof(threshold));
+
+    result->op     = GGML_OP_SHIFTED_STEP;
+    result->src[0] = a;
+
+    return result;
+}
+
+struct ggml_tensor * ggml_shifted_step_dyn(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * a,
+        const float         * threshold,
+        bool                  inplace) {
+    GGML_ASSERT(threshold != NULL);
+
+    struct ggml_tensor * result = inplace ? ggml_view_tensor(ctx, a) : ggml_dup_tensor(ctx, a);
+
+    // op_params: [0] = 미사용, [1] = dyn 플래그(1), [2..3] = threshold 를 담은 호스트 메모리 주소
+    ggml_set_op_params_f32(result, 0, 0.0f);
+    ggml_set_op_params_i32(result, 1, 1);
+    memcpy(&result->op_params[2], &threshold, sizeof(threshold));
 
     result->op     = GGML_OP_SHIFTED_STEP;
     result->src[0] = a;

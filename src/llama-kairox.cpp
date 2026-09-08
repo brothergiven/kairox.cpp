@@ -250,6 +250,8 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
         lc->groups_to_load.resize(lc->cache_shape.n_groups);
         lc->groups_to_evict.resize(lc->cache_shape.n_groups);
         lc->dfr_clamp_k.store(lc->cache_shape.n_cached_groups);
+        // ANB 가 켜져 있으면 스왑 예산은 열어두고 lambda 로만 강도를 조절한다
+        lc->dfr_neg_tau = -kairox_tau_load(k_kairox_lambda_init);
         lc->gpu_only = (lc->cache_shape.n_cached_neurons == lc->cache_shape.n_neurons);
 
         // 계측 플래그 on일 때
@@ -436,6 +438,16 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
     }
     LLAMA_LOG_INFO("%s: the cache manager has totally %.2f MiB GPU memory footprint\n", __func__,
                    ggml_backend_buffer_get_size(buf_gpu) / (1024.0 * 1024.0));
+
+    if (k_enable_kairox_anb) {
+        LLAMA_LOG_INFO("%s: ANB on - lambda init %.3f, alpha %.3f, range [%.3f, %.3f], tau_load %.6f%s\n", __func__,
+                       k_kairox_lambda_init, k_kairox_dfr_lambda_adapt_rate, k_kairox_lambda_min, k_kairox_lambda_max,
+                       kairox_tau_load(k_kairox_lambda_init),
+                       k_kairox_tau_load_fixed > 0.0f ? " (fixed)" : " (from lambda)");
+    } else {
+        LLAMA_LOG_INFO("%s: ANB off - lambda fixed at %.3f, swap budget adapts at rate %.3f, tau_load %.6f\n", __func__,
+                       k_kairox_lambda_init, k_kairox_dfr_lambda_adapt_rate, kairox_tau_load(k_kairox_lambda_init));
+    }
 }
 
 // 종료 시점에 아직 상주 중인 뉴런은 evict 를 거치지 않아 wasted 판정이 누락된다. 마지막으로 한 번 훑는다.
@@ -486,9 +498,38 @@ static void kairox_dump_activation_csv(const std::vector<kairox_layer_cache *>  
 
 
 
+// ANB 궤적을 CSV로 저장. 레이어별 lambda 수렴 곡선(논문 Figure 11)을 그리는 데 쓴다.
+static void kairox_dump_anb_trace_csv(const std::vector<kairox_layer_cache *> & layer_caches) {
+    const char *      path_env = getenv("KAIROX_ANB_TRACE_PATH");
+    const std::string path     = path_env ? path_env : "kairox_anb_trace.csv";
+
+    FILE * f = fopen(path.c_str(), "w");
+    if (!f) {
+        LLAMA_LOG_WARN("%s: failed to open '%s' for writing ANB trace\n", __func__, path.c_str());
+        return;
+    }
+
+    fprintf(f, "layer,step,lambda,tau_load,io_bound,reloads\n");
+
+    for (size_t il = 0; il < layer_caches.size(); ++il) {
+        const auto * lc = layer_caches[il];
+
+        for (size_t s = 0; s < lc->dbg_anb_lambda.size(); ++s) {
+            const float lambda = lc->dbg_anb_lambda[s];
+            fprintf(f, "%zu,%zu,%.6f,%.6f,%d,%d\n", il, s, lambda, kairox_tau_load(lambda),
+                    (int) lc->dbg_anb_io_bound[s], lc->dbg_anb_reloads[s]);
+        }
+    }
+    fclose(f);
+    LLAMA_LOG_INFO("%s: wrote ANB trace to '%s'\n", __func__, path.c_str());
+}
+
 kairox_cache_manager::~kairox_cache_manager() {
     if (k_kairox_dump_activation) {
         kairox_dump_activation_csv(layer_caches);
+    }
+    if (k_kairox_anb_trace) {
+        kairox_dump_anb_trace_csv(layer_caches);
     }
     for (auto * const lc : layer_caches) {
         delete lc;

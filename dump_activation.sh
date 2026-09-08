@@ -40,7 +40,16 @@ backend 프로파일 (test_kairox.sh 의 backend 표와 동일)
                  kairox    -> lambda_init=0.67  adapt=0.05
                  neuralink -> lambda_init=0.00  adapt=0.00
   LAMBDA_INIT  BACKEND 기본값을 덮어쓴다
-  LAMBDA_ADAPT BACKEND 기본값을 덮어쓴다
+  LAMBDA_ADAPT BACKEND 기본값을 덮어쓴다 (논문의 alpha, 0 이면 적응 자체를 끈다)
+
+ANB — Adaptive Neuron Balancer (논문 Algorithm 1 Phase 1)
+  ANB          1 이면 병목 피드백이 lambda 를 조절 (기본 1, 논문 동작)
+               0 이면 lambda 고정 + 스왑 예산(dfr_clamp_k) 조절 (기존 동작)
+  LAMBDA_MIN   lambda 하한                       (기본 0.10)
+  LAMBDA_MAX   lambda 상한                       (기본 0.95)
+  TAU_LOAD     >0 이면 tau_load 를 lambda 와 무관하게 이 값으로 고정 (기본 0 = 미사용)
+  ANB_TRACE    1 이면 레이어별 lambda 궤적을 CSV 로 덤프 (기본 0)
+  ANB_TRACE_PATH  궤적 CSV 경로 (기본: OUT 과 같은 이름에 _anb 접미사)
 
 모델 / 생성
   MODEL_DIR    모델 디렉터리                     (기본 $HOME/SPIF-GGUF)
@@ -128,6 +137,13 @@ esac
 lambda_init=${LAMBDA_INIT:-$lambda_init_default}
 lambda_adapt=${LAMBDA_ADAPT:-$lambda_adapt_default}
 
+# ANB 기본값은 C 코드(ggml-kairox.hpp)의 기본값과 같아야 한다.
+anb=${ANB:-1}
+lambda_min=${LAMBDA_MIN:-0.10}
+lambda_max=${LAMBDA_MAX:-0.95}
+tau_load=${TAU_LOAD:-0}
+anb_trace=${ANB_TRACE:-0}
+
 # =============================================================================
 # 모델 / 생성 설정
 # =============================================================================
@@ -143,6 +159,8 @@ ignore_eos=${IGNORE_EOS:-1}
 summary=${SUMMARY:-1}
 csv=${OUT:-$repo_root/kairox_activation.csv}
 log=${LOG:-}
+# 궤적 CSV 는 기본적으로 activation CSV 옆에 _anb 접미사로 떨군다.
+anb_trace_path=${ANB_TRACE_PATH:-${csv%.csv}_anb.csv}
 
 # 프롬프트는 두 갈래다.
 #   prompt_mode=bench  : prompts.txt 같은 프롬프트 집합을 --bench-prompt-file 로 넘긴다.
@@ -211,6 +229,11 @@ rm -f "$csv"
 
 echo "platform=$platform gpu_vram=${gpu_vram}GiB threads=$threads vb=${vb}GiB" \
      "backend=$backend lambda=$lambda_init/$lambda_adapt n=$max_tokens ignore_eos=$ignore_eos"
+if ((anb)); then
+    echo "anb=on lambda_range=[$lambda_min, $lambda_max] tau_load=$([[ "$tau_load" == "0" ]] && echo "from lambda" || echo "$tau_load")"
+else
+    echo "anb=off (lambda 고정, 스왑 예산 적응)"
+fi
 #             ^^^^^^^^^^^^
 # ${gpu_vram}GiB 처럼 중괄호를 쓰는 이유: $gpu_vramGiB 라고 쓰면
 # 셸이 "gpu_vramGiB" 라는 이름의 변수를 찾아버린다. 변수명 경계를 명시하는 것.
@@ -247,6 +270,12 @@ env_args=(
     "KAIROX_DFR_LAMBDA_ADAPT_RATE=$lambda_adapt"
     KAIROX_DUMP_ACTIVATION=1
     "KAIROX_DUMP_ACTIVATION_PATH=$csv"
+    "KAIROX_ANB=$anb"
+    "KAIROX_DFR_LAMBDA_MIN=$lambda_min"
+    "KAIROX_DFR_LAMBDA_MAX=$lambda_max"
+    "KAIROX_TAU_LOAD=$tau_load"
+    "KAIROX_ANB_TRACE=$anb_trace"
+    "KAIROX_ANB_TRACE_PATH=$anb_trace_path"
 )
 
 cmd_args=(
@@ -293,7 +322,7 @@ if [[ -n "$log" ]]; then
     env "${env_args[@]}" "${cmd_args[@]}" 2>&1 |
         tee "$log" |
         grep --line-buffered -E \
-            'bench run attempt|decode mean|wrote activation dump|^(warning|error):'
+            'bench run attempt|decode mean|wrote activation dump|wrote ANB trace|^(warning|error):'
 
     # 파이프라인에서는 $? 가 맨 끝 명령(grep)의 값이다. 일치하는 줄이 없으면 grep 은
     # 1 을 돌려주므로 그대로 쓰면 멀쩡한 실행을 실패로 오해한다.

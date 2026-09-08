@@ -13,7 +13,7 @@ prompt='Implement and compare multiple sorting algorithms in Python, including q
 usage() {
     cat <<'EOF'
 usage:
-  test_kairox.sh <backend> <platform> kind=<completion|speculative> vb=<GiB> [bench] [model=PATH] [draft_model=PATH] [model_split=PATH] [bench_runs=N] [kairox_dfr_lambda_*=...]
+  test_kairox.sh <backend> <platform> kind=<completion|speculative> vb=<GiB> [bench] [model=PATH] [draft_model=PATH] [model_split=PATH] [bench_runs=N] [kairox_dfr_lambda_*=...] [kairox_anb=0|1] [kairox_tau_load=F] [kairox_anb_trace=0|1]
 
 platforms:
   3080ti -> gpu_vram=12, threads=12
@@ -30,6 +30,12 @@ profile differences:
   backend     lambda adapt
   kairox      0.67   0.05
   neuralink   0.00   0.00
+
+adaptive neuron balancer (Algorithm 1 Phase 1):
+  kairox_anb=1        bottleneck feedback drives lambda (paper behavior, default)
+  kairox_anb=0        lambda stays fixed, swap budget adapts instead (legacy)
+  kairox_tau_load=F   pin tau_load to F instead of deriving it from lambda
+  kairox_anb_trace=1  dump per-layer lambda trace to kairox_anb_trace.csv
 EOF
     exit 1
 }
@@ -108,6 +114,11 @@ set_backend_defaults() {
     kairox_parallel=0
     kairox_dfr_lambda_init=0.67
     kairox_dfr_lambda_adapt_rate=0.05
+    kairox_dfr_lambda_min=0.10
+    kairox_dfr_lambda_max=0.95
+    kairox_anb=1
+    kairox_tau_load=0
+    kairox_anb_trace=0
 
     case "$backend" in
     llama_cpp) ;;
@@ -168,6 +179,21 @@ parse_args() {
         kairox_dfr_lambda_adapt_rate=*)
             kairox_dfr_lambda_adapt_rate=${arg#*=}
             ;;
+        kairox_dfr_lambda_min=*)
+            kairox_dfr_lambda_min=${arg#*=}
+            ;;
+        kairox_dfr_lambda_max=*)
+            kairox_dfr_lambda_max=${arg#*=}
+            ;;
+        kairox_anb=*)
+            kairox_anb=${arg#*=}
+            ;;
+        kairox_tau_load=*)
+            kairox_tau_load=${arg#*=}
+            ;;
+        kairox_anb_trace=*)
+            kairox_anb_trace=${arg#*=}
+            ;;
         *)
             usage
             ;;
@@ -185,6 +211,11 @@ build_env_args() {
             "KAIROX_PARALLEL=$kairox_parallel"
             "KAIROX_DFR_LAMBDA_INIT=$kairox_dfr_lambda_init"
             "KAIROX_DFR_LAMBDA_ADAPT_RATE=$kairox_dfr_lambda_adapt_rate"
+            "KAIROX_DFR_LAMBDA_MIN=$kairox_dfr_lambda_min"
+            "KAIROX_DFR_LAMBDA_MAX=$kairox_dfr_lambda_max"
+            "KAIROX_ANB=$kairox_anb"
+            "KAIROX_TAU_LOAD=$kairox_tau_load"
+            "KAIROX_ANB_TRACE=$kairox_anb_trace"
         )
     fi
 }

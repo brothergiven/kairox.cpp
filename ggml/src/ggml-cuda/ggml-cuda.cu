@@ -26,6 +26,7 @@
 #include "ggml-cuda/fattn.cuh"
 #include "ggml-cuda/getrows.cuh"
 #include "ggml-cuda/im2col.cuh"
+#include "ggml-cuda/kairox-gather.cuh"
 #include "ggml-cuda/mmf.cuh"
 #include "ggml-cuda/mmq.cuh"
 #include "ggml-cuda/mmvf.cuh"
@@ -2702,19 +2703,24 @@ static void ggml_cuda_reload_exec(ggml_backend_cuda_context & ctx, ggml_tensor *
 
     auto * kairox_extra    = (kairox_tensor_extra *) dst->extra;
     auto * kairox_executor = (SingleThreadExecutor *) kairox_extra->kairox_executor;
-    for (size_t window_offset = 0; window_offset < kairox_lc->reload_count;) {
-        size_t window_size = MIN(kairox_lc->reload_window_size, kairox_lc->reload_count - window_offset);
+    if (k_kairox_gather) {
+        // 결정 단위는 그대로 두고 전송만 묶는다. 호출 횟수가 reload_count 개에서 3개로 줄어든다.
+        kairox_executor->post(kairox_gather_reload, weight_base, cache_base, group_nbytes, cudaStreamPerThread,
+                              (const reload_pair *) kairox_lc->reload_plan.data(), kairox_lc->reload_count);
+    } else {
+        for (size_t window_offset = 0; window_offset < kairox_lc->reload_count;) {
+            size_t window_size = MIN(kairox_lc->reload_window_size, kairox_lc->reload_count - window_offset);
 
-        kairox_executor->post(kairox_batch_reload, weight_base, cache_base, group_nbytes,
-                            cudaStreamPerThread, window_offset, window_size, kairox_lc->reload_plan.data());
+            kairox_executor->post(kairox_batch_reload, weight_base, cache_base, group_nbytes,
+                                cudaStreamPerThread, window_offset, window_size, kairox_lc->reload_plan.data());
 
-        window_offset += window_size;
+            window_offset += window_size;
+        }
     }
     if (kairox_wt == KAIROX_FFN_UP) {
         kairox_executor->make_anchor(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_MUL_MAT_SPARSE);
     } else if (kairox_wt == KAIROX_FFN_DOWN) {
-        kairox_executor->make_anchor(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_AXPY_SPARSE,
-                                   &kairox_lc->dfr_clamp_k, kairox_lc->cache_shape.n_cached_groups);
+        kairox_executor->make_anchor(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_AXPY_SPARSE, kairox_lc);
     }
     GGML_UNUSED(ctx);
 }
@@ -3561,7 +3567,8 @@ static bool ggml_cuda_try_kairox_dfr_fusion(ggml_backend_cuda_context & cuda_ctx
         return is_cuda_contiguous(t, type) && t->ne[1] == 1 && t->ne[2] == 1 && t->ne[3] == 1;
     };
 
-    if (cgraph->nodes[i]->op == GGML_OP_SHIFTED_STEP) {
+    // dyn threshold(= tau_load) 를 쓰는 shifted_step 은 DFR update 의 머리가 아니다. 융합 대상에서 제외한다.
+    if (cgraph->nodes[i]->op == GGML_OP_SHIFTED_STEP && cgraph->nodes[i]->op_params[1] == 0) {
         int j = i;
         ggml_tensor * shifted = cgraph->nodes[j];
         ggml_tensor * cur = shifted;

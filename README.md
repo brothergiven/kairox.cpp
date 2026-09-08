@@ -260,6 +260,276 @@ FORCE=1 BENCH_RUNS=10 VBS="6" SIZES="8 16 32" bash bench_group_sweep.sh full
 | RTX 3080 | 10 GiB | 6 | (측정)     | (측정)     | **54.51%** |
 
 
+## 6. Adaptive Neuron Balancer (ANB) — 논문 Algorithm 1 Phase 1
+
+논문 Algorithm 1 중 Phase 2(TAM 갱신 + tau_load 필터 + top-K)는 이미 구현돼 있었지만,
+Phase 1(병목 피드백으로 lambda 를 조절하는 부분)은 없었다. 대신 lambda 를 0.67 로 고정하고
+스왑 예산(`dfr_clamp_k`)을 대신 조절하는, 논문에 없는 경로가 들어가 있었다.
+
+### 6-1. 구현
+
+| 위치 | 내용 |
+|---|---|
+| `ggml/include/ggml-kairox.hpp` | `kairox_anb_feedback()` — Algorithm 1 line 1-6. `kairox_tau_load()` — line 8 |
+| `ggml/include/ggml-kairox.hpp` | `make_anchor()` 가 병목을 판정해 lambda(ANB on) 또는 스왑 예산(ANB off)을 조절 |
+| `ggml/src/ggml.c`, `ggml/src/ggml-cuda/unary.cu` | `ggml_shifted_step_dyn()` — threshold 를 실행 시점에 호스트 메모리에서 읽는 변형 |
+| `src/llama-graph.cpp:1329` | tau 필터가 `ggml_shifted_step_dyn` 을 쓰도록 변경 |
+| `src/llama-kairox.cpp` | lambda/tau 초기화, ANB 궤적 CSV 덤프 |
+
+**병목 판정.** 논문의 `GetSystemBottleneck()` 은 "파이프라인 stall 을 관찰한다"고만 돼 있다.
+여기서는 이미 있던 anchor 신호를 쓴다 — `SingleThreadExecutor` 의 anchor 에 매달린 task 는
+"reload I/O 가 드레인되는 중에 도착한 sparse compute split" 이므로, 하나라도 있으면 계산이
+전송을 기다린 것(IO_BOUND)이고 비어 있으면 전송이 먼저 끝난 것(CPU_BOUND)이다.
+
+**tau 를 상수로 구우면 안 되는 이유.** `tau_load = (1 - lambda) + eps` 인데 lambda 가 스텝마다
+바뀐다. llama.cpp 는 디코드 중 그래프를 재사용하므로(실측 512 토큰 중 `graphs reused = 269`)
+빌드 시점 값을 `op_params` 에 구우면 첫 스텝 값에 그대로 고정된다. 그래서 커널이 매 실행마다
+`kairox_layer_cache::dfr_neg_tau` 를 읽도록 `ggml_shifted_step_dyn` 을 추가했다.
+
+**lambda = 0 예외.** `neuralink` 프로파일은 lambda=0 이다. 이때 S = A <= 1 인데
+tau = (1-0) + eps = 1+eps 라 어떤 그룹도 필터를 통과하지 못해 캐시가 정적으로 굳는다.
+관성이 없으면 one-hit wonder 라는 개념 자체가 없으므로 lambda <= 0 이면 필터를 끈다.
+
+### 6-2. 환경변수
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `KAIROX_ANB` | `1` | `1`=lambda 적응(논문), `0`=lambda 고정 + 스왑 예산 적응(기존 동작) |
+| `KAIROX_DFR_LAMBDA_INIT` | `0.67` | lambda 초기값 (논문 예시는 0.5) |
+| `KAIROX_DFR_LAMBDA_ADAPT_RATE` | `0.05` | 논문의 alpha. `0` 이면 적응 자체를 끈다 |
+| `KAIROX_DFR_LAMBDA_MIN` / `_MAX` | `0.10` / `0.95` | lambda 상/하한. 논문에 수치 없음 |
+| `KAIROX_TAU_EPS` | `1e-6` | tau_load 의 판별 마진 eps |
+| `KAIROX_TAU_LOAD` | `0` (미사용) | `>0` 이면 tau 를 lambda 와 무관하게 고정 (필터 강도 스윕용) |
+| `KAIROX_ANB_TRACE` | `0` | 레이어별 lambda 궤적을 CSV로 덤프 (논문 Figure 11 대응) |
+| `KAIROX_ANB_TRACE_PATH` | `./kairox_anb_trace.csv` | 궤적 CSV 경로 |
+
+```bash
+KAIROX_ANB=1 KAIROX_ANB_TRACE=1 KAIROX_ANB_TRACE_PATH=./anb.csv \
+  bash test_kairox.sh kairox 3070 kind=completion vb=6
+```
+
+궤적 CSV 컬럼: `layer,step,lambda,tau_load,io_bound,reloads`.
+
+### 6-3. ANB 스윕 — `bench_anb.sh`
+
+`bench_activation.sh` 와 같은 드라이버/러너 구조다. 처리량이 아니라 **카운트 지표**
+(hit / activation / resident / loads / wasted)를 재는데, 처리량 노이즈가 ±45% 라
+20~30% 미만의 효과는 측정 자체가 되지 않기 때문이다. 카운트 지표는 같은 프롬프트 집합에
+`--ignore-eos` 를 걸면 재현된다.
+
+```
+bench_models.sh      -> test_kairox.sh       (throughput)
+bench_activation.sh  -> dump_activation.sh   (activation/hit/resident)
+bench_group_sweep.sh -> group_sweep.sh       (group_size 스윕)
+bench_anb.sh         -> dump_activation.sh   (ANB 설정 스윕)
+```
+
+```bash
+# 동작 확인 (2조합)
+PLATFORM=3070 N=128 BENCH_RUNS=1 bash bench_anb.sh simple
+
+# 전체 (4조합)
+PLATFORM=3070 bash bench_anb.sh full
+```
+
+기본 조합:
+
+| 이름 | ANB | lambda_init | alpha | lambda 범위 | 의미 |
+|---|---|---|---|---|---|
+| `anb_off` | 0 | 0.67 | 0.05 | — | 기존 동작 (lambda 고정, 스왑 예산 적응) |
+| `anb_frozen` | 1 | 0.67 | 0.05 | [0.67, 0.67] | 널 컨트롤 — 피드백은 돌지만 lambda 가 못 움직인다 |
+| `anb_min010` | 1 | 0.67 | 0.05 | [0.10, 0.95] | 논문 Phase 1, 하한 기본값 |
+| `anb_min050` | 1 | 0.67 | 0.05 | [0.50, 0.95] | 논문 Phase 1, tau <= 0.5 로 제한 |
+
+`CONFIGS` 로 덮어쓸 수 있고 `anb_static`(적응 전혀 없음), `anb_paper`(논문 예시 초기값 0.5)도 있다.
+
+주요 환경변수 — `VBS`(기본 `"6"`), `CONFIGS`, `PLATFORM`, `BENCH_RUNS`, `N`(**32 이상**),
+`REPEAT`, `OUT_DIR`(기본 `./anb_logs`), `FORCE`, `COOLDOWN`, `DROP_CACHES`.
+
+출력은 세 갈래다.
+
+1. **카운트 지표** (`anb_summary.csv`) — 조합별 hit/res, hit/act, 낭비율, total_loads, resident
+2. **lambda 궤적 요약** (`anb_lambda_summary.csv`) — 수렴 후(마지막 1/4 구간) 얕은 층/깊은 층
+   평균 lambda, io_bound 비율, 스텝당 reload. 논문 Figure 11 과 대조하는 용도다.
+3. **레이어별 hit/act 표** — 조합을 나란히 놓고 본다
+
+무엇을 확인해야 하는지:
+
+- `resident` 열은 **정책과 무관하게 `n_cached_neurons x 총 토큰 수` 로 고정**이어야 한다
+  (캐시는 항상 꽉 차 있고 load/evict 개수가 강제로 같다). 조합마다 다르면 그 가정부터 깨진 것이다.
+- `anb_min010` 에서 깊은 층 lambda 가 하한에 눌리는지 본다. lambda 를 내리면 교체가 늘어야 하는데
+  `tau = (1 - lambda)` 가 같이 커져 로드를 막는 상쇄가 있다.
+- `anb_min050` 에서 그 상쇄가 풀려 lambda 가 하한을 떠나는지, 적중률이 회복되는지 본다.
+
+> **주의.** 호스트 RAM 이 모델보다 빠듯하면(`--no-mmap` 이라 9 GB 모델이 통째로 올라간다)
+> 연속 실행이 swap 으로 무너진다. `DROP_CACHES=1 COOLDOWN=20` 을 쓰고, 다른 작업이 도는
+> 중에는 처리량 측정을 하지 말 것.
+
+
+## 7. 실험 기록
+
+측정 조건은 따로 적지 않는 한 공통이다 — prosparse-llama-2-7b Q8_0, RTX 3070 8 GiB, vb=6 GiB,
+프롬프트 2개 x 512토큰(`--ignore-eos` 로 토큰 수 고정), 상주 슬롯-토큰 182.5M(전 조건 동일).
+
+> **표본 주의.** 프롬프트 2개는 경향 확인용이다. 적중률은 카운트 기반이라 안정적이지만
+> 시간은 이 박스에서 노이즈가 ±45% 다. 1~2%p 차이는 결론에 쓰지 않는다.
+
+### 7-1. τ_load 필터 — 논문 설명과 반대로 동작한다
+
+논문은 τ_load = (1−λ)+ε 필터가 one-hit wonder 를 걸러 reload latency 를 1.8–2.2× 줄인다고
+설명한다. 실측은 반대다. g=16 고정, τ 만 바꿔 스윕:
+
+| τ_load | 적중률 (clamp 무제한) | 로드 | 적중률 (clamp 활성) | 로드 |
+|---|---|---|---|---|
+| ~0 (off) | 68.50% | 13,040,704 | 69.54% | 13,093,024 |
+| **0.05** | **68.83%** | 13,585,120 | **70.82%** | 13,732,736 |
+| 0.10 | 68.76% | 13,475,424 | 70.26% | 13,255,456 |
+| 0.20 | 66.75% | 14,604,960 | 70.14% | 14,545,568 |
+| **0.33 (논문값)** | **60.97%** | **19,358,880** | **65.07%** | 15,818,912 |
+| 0.50 | 56.48% | 11,273,056 | 55.99% | 9,196,048 |
+
+곡선에 봉우리가 없다. τ≈0–0.10 이 평평한 고원이고 0.20 부터 무너진다. **필터를 세게 걸수록
+로드가 늘어난다**(τ=0.33 에서 τ≈0 대비 +49%)는 것이 결정적이다 — τ 가 막던 것은 일회성
+뉴런이 아니라 오래 상주할 좋은 그룹이었고, 그것들이 배제되니 캐시가 자리를 못 잡고 같은
+슬롯을 반복 교체했다.
+
+두 계열은 **모양이 같다**(서로 다른 조건에서 재현). 다만 겹치지는 않는다 — clamp 활성 쪽이
+6점 중 5점에서 높고 격차는 τ=0.33 에서 4.1%p 로 가장 크다. clamp 가 τ 의 해악을 부분적으로
+완충하는 것으로 보인다.
+
+**원인 후보.** τ 는 그룹 **평균** 활성률(0–1)과 비교된다. g=16 에서 τ=0.33 은 "16개 중 5~6개
+동시 활성"을 요구하는데, 코액티베이션 응집도가 C(16)=27.5%(16개 중 4.4개)라 정상적인 hot
+그룹조차 통과하지 못한다.
+
+### 7-2. 그룹 입도 — 고울수록 적중률이 오른다
+
+용량을 고정한 채 group_size 만 바꿨다. 세 조건은 τ 와 스왑 예산 설정만 다르다.
+
+| g | n_group | 기본 설정 | 스로틀 제거 | **τ+스로틀 제거** | 시간(τ+스로틀 제거) |
+|---|---|---|---|---|---|
+| 2 | 5504 | 63.19% | 75.05% | **80.06%** | 490.0s |
+| 4 | 2752 | 66.46% | 64.65% | **76.01%** | 239.3s |
+| 8 | 1376 | 66.17% | 65.48% | **72.35%** | 140.1s |
+| 16 | 688 | 64.16% | 62.49% | **68.39%** | 128.6s |
+| 32 | 344 | 59.76% | 62.37% | 68.81% | 123.1s |
+| 64 | 172 | 60.63% | 61.25% | 66.36% | 124.7s |
+| 128 | 86 | 58.75% | 58.93% | 65.63% | 125.0s |
+
+격리 조건에서 **g=128 → 2 로 −14.4%p, 사실상 단조**다(g=32 만 0.42%p 역전, 노이즈 범위).
+미스 기준으로는 34.37% → 19.94%, **미스가 42% 줄어든다.** 배포값 g=16 대비로는 +11.67%p.
+
+기본/스로틀 제거 조건에서 보이던 g=2 함몰과 g=4 딥은 각각 스왑 예산과 τ 가 만든 인공물이었다.
+
+**입도 효과는 조건에 무관하다.** g=8→128 구간 기울기가 −7.42 / −6.55 / −6.72 %p 로 모인다.
+절편은 6%p 넘게 흩어지는데 기울기는 같다 — τ 는 곡선을 위아래로 옮길 뿐 기울기를 바꾸지 않는다.
+
+**그런데 시간은 정반대다.** 적중률 최고점(g=2, 80.06%)이 시간 최악(490s, g=128 의 4배)이다.
+전송이 그룹당 `cudaMemcpyAsync` 3회로 **그룹 크기와 무관**하므로, g=2 는 같은 뉴런 수를 옮기는 데
+g=16 의 8배 호출을 쓴다. 이 표의 적중률은 최적화 결과가 아니라 **아직 못 쓰고 있는 잔고**다.
+
+### 7-3. 스왑 예산 `dfr_clamp_k` — g=2 에서만 작동한다
+
+`llama-kairox.cpp` 는 정책이 결정한 교체 목록을 `dfr_clamp_k` 개까지만 실행하고 나머지를 버린다.
+논문에 없는 장치다(주석: "For simplicity, decrease the maximum load directly when reloading").
+
+| g | 로드 (clamp 활성) | 로드 (무제한) | 배율 | Δ적중률 |
+|---|---|---|---|---|
+| 2 | 8,153,748 | 20,443,748 | **2.51x** | **+11.86p** |
+| 4 | 12,637,408 | 19,931,528 | 1.58x | −1.81p |
+| 8 | 14,035,992 | 15,882,728 | 1.13x | −0.70p |
+| 16 | 16,098,832 | 18,925,344 | 1.18x | −1.67p |
+| 32 | 14,628,896 | 15,396,928 | 1.05x | +2.61p |
+| 64 | 16,254,848 | 14,043,200 | **0.86x** | +0.62p |
+| 128 | 12,086,144 | 13,320,704 | 1.10x | +0.18p |
+
+g=2 에서는 정책 요구의 40% 만 실행하고 있었다. 그런데 g≥4 에서는 배율이 1.05~1.18 배뿐이고,
+**g=64 에서는 0.86 배**다 — 스로틀을 없앴는데 로드가 더 적으니 애초에 물고 있지 않았다.
+
+자기 안정화 구조 때문이다. 잘라내면 I/O 가 줄어 `anchor->pending` 이 비고, 그러면 +5% 로 다시
+자란다. 그래서 "가끔 아주 살짝 무는" 지점 근처를 맴돈다. 전송이 호출 고정비에 묶여 있어
+g=2 만 항상 I/O 병목으로 판정되고 곱셈적으로 바닥까지 내려간다.
+
+### 7-4. 비교군 `neuralink` 가 죽어 있었다
+
+τ 커밋(`d5a6d17`) 이후 λ=0 인 `neuralink` 는 τ=(1−0)+ε=1+ε 가 되어 어떤 그룹도 통과하지
+못한다(점수 S 는 정의상 1 을 넘을 수 없다). 캐시가 정적으로 굳는다.
+
+| 설정 | 총 로드 |
+|---|---|
+| λ=0, 가드 우회 (옛 동작) | **176** |
+| λ=0, 가드 적용 | **2,963,664** |
+
+이 A/B 는 동시에 τ 값이 실제로 커널까지 전달된다는 증거이기도 하다(포인터가 안 읽혔다면
+두 값이 같아야 한다). **해당 커밋 이후 측정한 neuralink 수치는 전부 무효다.**
+
+### 7-5. 진행 중 / 미실행
+
+- **전송 병합(gather).** `exp/group-granularity` 의 `kairox_gather_reload()` 를 이 브랜치로
+  가져왔다(`KAIROX_GATHER=1`). g=4/8/16 을 전송 경로만 바꿔 재는 중이다. 판정 기준: 적중률은
+  양쪽이 같아야 하고(정책 불변), 승부는 시간에서 난다.
+- **여러 모델.** `gs_multi_model.sh` 로 돌린다. 배포 split 의 n_group 이 전 모델에서 1024
+  이하이므로(논문 8장의 argsort 제약), g=16 은 워크로드 최적값이 아니라 7B급에서 그 제약이
+  허용하는 가장 고운 값일 가능성이 높다. 자세한 것은 [CROSS_MODEL_RUNBOOK.md](CROSS_MODEL_RUNBOOK.md).
+- **ANB 자체의 처리량 이득.** 미판정. 호스트 스왑 오염으로 무산됐다.
+
+---
+
+## 8. 스크립트 색인
+
+드라이버는 여러 조합을 돌리고, 러너는 조합 하나를 실행한다.
+
+| 드라이버 | 러너 | 무엇을 재나 |
+|---|---|---|
+| `bench_models.sh` | `test_kairox.sh` | 처리량 (AE 경로) |
+| `bench_activation.sh` | `dump_activation.sh` | activation / hit / resident |
+| `bench_group_sweep.sh` | `group_sweep.sh` | group_size 스윕 |
+| `bench_anb.sh` | `dump_activation.sh` | ANB 설정 스윕 |
+| `gs_multi_model.sh` | `dump_activation.sh` | 여러 모델 x group_size |
+
+```bash
+# 빌드
+bash compile_kairox.sh rel
+
+# ANB 설정 비교 (anb_off / anb_frozen / anb_min010 / anb_min050)
+PLATFORM=3070 bash bench_anb.sh full
+
+# group_size 스윕 — 정책 격리 조건
+ANB=1 LAMBDA_MIN=0.67 LAMBDA_MAX=0.67 TAU_LOAD=0.0001 \
+  SIZES="2 4 8 16 32 64 128" OUT_DIR=./dumps_pure bash group_sweep.sh
+
+# τ 스윕 (g=16 고정)
+for tau in 0.0001 0.05 0.10 0.20 0.33 0.50; do
+  ANB=1 LAMBDA_MIN=0.67 LAMBDA_MAX=0.67 TAU_LOAD=$tau \
+    OUT=./tau_$tau.csv bash dump_activation.sh
+done
+
+# 전송 병합 A/B
+KAIROX_GATHER=1 VB=6 bash dump_activation.sh
+
+# 여러 모델
+bash gs_multi_model.sh
+MODELS="opt-6.7b opt-13b" SIZES="4 16 64" bash gs_multi_model.sh
+```
+
+### 환경변수 한눈에
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `KAIROX_PARALLEL` | `0` | **필수.** 0 이면 재배치 자체가 꺼져 캐시가 정적이 된다 |
+| `KAIROX_ANB` | `1` | 1=λ 적응(논문 Phase 1), 0=λ 고정 + 스왑 예산 적응(기존) |
+| `KAIROX_DFR_LAMBDA_INIT` | `0.67` | λ 초기값 (논문 예시는 0.5) |
+| `KAIROX_DFR_LAMBDA_ADAPT_RATE` | `0.05` | 논문의 α. 0 이면 적응 자체를 끈다 |
+| `KAIROX_DFR_LAMBDA_MIN` / `_MAX` | `0.10` / `0.95` | λ 상/하한. 논문에 수치 없음 |
+| `KAIROX_TAU_EPS` | `1e-6` | τ_load 의 판별 마진 ε |
+| `KAIROX_TAU_LOAD` | `0` (미사용) | >0 이면 τ 를 λ 와 무관하게 고정 |
+| `KAIROX_ANB_TRACE` / `_PATH` | `0` / `./kairox_anb_trace.csv` | λ 궤적 CSV (논문 Figure 11 대응) |
+| `KAIROX_GATHER` | `0` | 1 이면 전송을 pinned staging 으로 묶는다 |
+| `KAIROX_GATHER_BUDGET_MIB` | `64` | gather staging 버퍼 예산 |
+| `KAIROX_GATHER_VERIFY` | `0` | gather 경로 바이트 단위 검증. 매우 느리다 |
+| `KAIROX_RELOAD_WINDOW` | `4` | 개별 전송 경로의 동기화 주기 |
+| `KAIROX_DUMP_ACTIVATION` / `_PATH` | `0` / `./kairox_activation.csv` | 뉴런별 카운터 CSV |
+
+
 ---
 
 # KAIROX Artifact Evaluation
