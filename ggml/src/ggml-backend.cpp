@@ -1557,9 +1557,25 @@ void kairox_register_dependency(ggml_backend_sched_t        sched,
     kairox_append_event(sched, dst, dst_state, event);
 }
 
+// KAIROX_PROFILE: future 를 기다리는 이 지점이 메인 스레드가 워커(전송 + sparse 연산)를
+// 실제로 붙잡혀 있는 곳이다. 여기서 걸린 시간이 곧 TPOT 에 노출된 몫이다.
+static enum ggml_status kairox_prof_fut_get(std::future<enum ggml_status> & fut) {
+    if (!k_kairox_profile) {
+        return fut.get();
+    }
+
+    const uint64_t   t0 = kairox_now_ns();
+    enum ggml_status ec = fut.get();
+    kairox_prof().add(KAIROX_PROF_STALL, kairox_now_ns() - t0);
+    return ec;
+}
+
 static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t sched) {
     GGML_ASSERT(sched);
     struct ggml_backend_sched_split * splits = sched->splits;
+
+    // 그래프 1회 = 디코드 토큰 1개. 다른 구간들의 분모가 된다.
+    kairox_prof_scope prof_step(KAIROX_PROF_STEP);
 
     ggml_tensor * prev_ids_tensor = nullptr;
     std::vector<int32_t> ids;
@@ -1574,7 +1590,7 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
 
         if (k_enable_kairox_parallel && split_fut.valid() &&
             ggml_backend_dev_type(split_backend->device) != GGML_BACKEND_DEVICE_TYPE_CPU) {
-            enum ggml_status async_ec = split_fut.get();
+            enum ggml_status async_ec = kairox_prof_fut_get(split_fut);
             if (async_ec != GGML_STATUS_SUCCESS) {
                 return async_ec;
             }
@@ -1589,7 +1605,7 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
                     for (int k = 0; k < kairox_extra->event_count; ++k) {
                         if (kairox_extra->states[k] == KAIROX_EVENT_SYNCHRONIZE) {
                             if (!waited_for_async_ec && split_fut.valid() && async_split_fut_flag == KAIROX_SPLIT_AXPY_SPARSE) {
-                                enum ggml_status async_ec = split_fut.get();
+                                enum ggml_status async_ec = kairox_prof_fut_get(split_fut);
                                 if (async_ec != GGML_STATUS_SUCCESS) {
                                     return async_ec;
                                 }
@@ -1737,10 +1753,12 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
         if (!sched->callback_eval) {
             auto * kairox_extra = (kairox_tensor_extra *) split->graph.nodes[0]->extra;
             if (k_enable_kairox_parallel && kairox_extra && kairox_extra->split_flag == KAIROX_SPLIT_MUL_MAT_SPARSE) {
+                kairox_prof_scope prof_launch(KAIROX_PROF_SPARSE_LAUNCH);
                 split_fut = sched->kairox_executor->submit(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_MUL_MAT_SPARSE,
                                                          ggml_backend_graph_compute_async, split_backend, &split->graph);
                 async_split_fut_flag = KAIROX_SPLIT_MUL_MAT_SPARSE;
             } else if (k_enable_kairox_parallel && kairox_extra && kairox_extra->split_flag == KAIROX_SPLIT_AXPY_SPARSE) {
+                kairox_prof_scope prof_launch(KAIROX_PROF_SPARSE_LAUNCH);
                 split_fut = sched->kairox_executor->submit(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_AXPY_SPARSE,
                                                          ggml_backend_graph_compute_async, split_backend, &split->graph);
                 async_split_fut_flag = KAIROX_SPLIT_AXPY_SPARSE;
@@ -1793,7 +1811,7 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
     }
 
     if (k_enable_kairox_parallel && split_fut.valid()) {
-        enum ggml_status async_ec = split_fut.get();
+        enum ggml_status async_ec = kairox_prof_fut_get(split_fut);
         if (async_ec != GGML_STATUS_SUCCESS) {
             return async_ec;
         }

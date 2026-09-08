@@ -3,6 +3,8 @@
 #include "ggml.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -77,6 +79,90 @@ const int  k_kairox_reload_window      = std::max(1, get_env_int("KAIROX_RELOAD_
 // 런마다 달라지므로, 출력 비교로는 전송 경로의 정확성을 검증할 수 없다 — 그래서 필요하다.
 // 매우 느리다. 검증 전용.
 const bool k_kairox_gather_verify      = get_env_bool("KAIROX_GATHER_VERIFY", false);
+
+// --- 스텝 시간 분해 계측 (KAIROX_PROFILE) -----------------------------------
+// group_size 스윕에서 TPOT 가 1/gs 에 비례해 나빠지는 것은 확인됐지만, 전송 호출 수와
+// n_group 이 둘 다 1/gs 로 움직여서 회귀로는 어느 항이 지배적인지 분리되지 않는다.
+// 그래서 디코드 스텝 시간을 네 갈래로 직접 잰다.
+//
+//   ① compute : sparse FFN 커널 등 실제 연산            (잔차로 산출)
+//   ② topk    : argsort_top_k ~ mask 생성 (n_group 에 비례, 1024 에서 CUB 폴백)
+//   ③ score   : DFR EMA 갱신 + tau 필터    (뉴런 수에 비례하므로 gs 와 무관해야 한다)
+//   ④ pcie    : 워커 스레드의 H2D 전송     (호출 수에 비례)
+//   ⑤ stall   : 메인 스레드가 워커를 실제로 기다린 시간
+//
+// ②③ 는 메인 CUDA 스트림의 커널이라 호스트 타이머로 잴 수 없어 CUDA event 로 재고,
+// ④⑤ 는 호스트 측 대기라 steady_clock 으로 잰다. 메인 스트림과 워커가 병렬로 돌기
+// 때문에 ②+③+④ 의 합은 스텝 시간을 넘을 수 있다 — ⑤ 가 그중 실제로 노출된 몫이다.
+const bool k_kairox_profile = get_env_bool("KAIROX_PROFILE", false);
+
+enum kairox_prof_bucket {
+    KAIROX_PROF_TOPK = 0,
+    KAIROX_PROF_SCORE,
+    KAIROX_PROF_PCIE,
+    KAIROX_PROF_STALL,
+    KAIROX_PROF_STEP,        // 그래프 1회(= 디코드 토큰 1개) 벽시계 시간
+    KAIROX_PROF_SPARSE_LAUNCH,  // 워커에서 sparse split 을 발행하는 데 든 시간
+    KAIROX_PROF_COUNT
+};
+
+inline const char * kairox_prof_name(int b) {
+    switch (b) {
+        case KAIROX_PROF_TOPK:          return "topk";
+        case KAIROX_PROF_SCORE:         return "score";
+        case KAIROX_PROF_PCIE:          return "pcie";
+        case KAIROX_PROF_STALL:         return "stall";
+        case KAIROX_PROF_STEP:          return "step_total";
+        case KAIROX_PROF_SPARSE_LAUNCH: return "sparse_launch";
+        default:                        return "unknown";
+    }
+}
+
+// 여러 번역 단위에서 같은 인스턴스를 봐야 하므로 함수 지역 static 으로 둔다.
+struct kairox_profiler {
+    std::atomic<uint64_t> ns[KAIROX_PROF_COUNT];
+    std::atomic<uint64_t> n[KAIROX_PROF_COUNT];
+
+    kairox_profiler() {
+        for (int i = 0; i < KAIROX_PROF_COUNT; ++i) {
+            ns[i].store(0);
+            n[i].store(0);
+        }
+    }
+
+    void add(int bucket, uint64_t dt_ns) {
+        ns[bucket].fetch_add(dt_ns, std::memory_order_relaxed);
+        n[bucket].fetch_add(1, std::memory_order_relaxed);
+    }
+};
+
+inline kairox_profiler & kairox_prof() {
+    static kairox_profiler prof;
+    return prof;
+}
+
+inline uint64_t kairox_now_ns() {
+    return (uint64_t) std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+// 구간 하나를 재서 버킷에 적립하는 헬퍼. 소멸자에서 적립하므로 early return 이 있어도 샌다.
+struct kairox_prof_scope {
+    int      bucket;
+    uint64_t t0;
+
+    explicit kairox_prof_scope(int bucket) : bucket(bucket), t0(k_kairox_profile ? kairox_now_ns() : 0) {}
+
+    ~kairox_prof_scope() {
+        if (k_kairox_profile) {
+            kairox_prof().add(bucket, kairox_now_ns() - t0);
+        }
+    }
+};
+
+// 계측 결과를 CSV 로 남긴다. KAIROX_DUMP_ACTIVATION 과 같이 종료 시점에 한 번 부른다.
+void kairox_profile_dump();
 
 /**
  * 캐시 관리 정책을 실제로 수행하는 구조체

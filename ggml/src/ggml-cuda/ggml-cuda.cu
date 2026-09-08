@@ -2649,6 +2649,195 @@ static void ggml_cuda_reload_plan(ggml_backend_cuda_context & ctx, ggml_tensor *
     CUDA_CHECK(cudaStreamSynchronize(ctx.stream()));
 }
 
+// --- KAIROX_PROFILE: 메인 스트림 커널 구간 계측 -------------------------------
+//
+// topk/score 구간은 메인 CUDA 스트림의 커널이라 호스트 타이머로는 발행 시간만 잡힌다.
+// 노드 앞뒤로 CUDA event 를 걸어 실제 GPU 시간을 잰다.
+//
+// elapsed 를 그 자리에서 읽으면 cudaEventSynchronize 가 파이프라인을 세워 측정 대상이
+// 오염되므로, 이벤트 쌍을 링버퍼에 쌓아두고 한 바퀴 돌아 재사용할 때(=이미 끝났을 때)
+// 뒤늦게 읽어서 적립한다.
+struct kairox_prof_gpu {
+    struct slot {
+        cudaEvent_t beg    = nullptr;
+        cudaEvent_t end    = nullptr;
+        int         bucket = -1;   // -1 이면 비어 있음
+    };
+
+    static constexpr size_t n_slots = 2048;
+
+    std::vector<slot> slots;
+    size_t            next = 0;
+    // KAIROX_PARALLEL 에서 sparse split 은 워커 스레드가 ggml_backend_graph_compute_async 로
+    // 실행한다. 즉 이 링은 메인/워커 두 스레드에서 동시에 불릴 수 있어 락이 필요하다.
+    std::mutex mtx;
+
+    kairox_prof_gpu() : slots(n_slots) {}
+
+    ~kairox_prof_gpu() { drain(); }
+
+    // 사용할 슬롯을 확보한다. 이미 쓰던 슬롯이면 결과를 먼저 걷어낸다.
+    slot * acquire(int bucket) {
+        std::lock_guard<std::mutex> lock(mtx);
+
+        slot & sl = slots[next];
+        next      = (next + 1) % n_slots;
+
+        harvest_locked(sl);
+
+        if (!sl.beg || !sl.end) {
+            // 한쪽만 만들어진 상태로 남지 않게 둘 다 확보되었을 때만 슬롯을 내준다.
+            if (!sl.beg && cudaEventCreate(&sl.beg) != cudaSuccess) {
+                return nullptr;
+            }
+            if (!sl.end && cudaEventCreate(&sl.end) != cudaSuccess) {
+                return nullptr;
+            }
+        }
+
+        sl.bucket = bucket;
+        return &sl;
+    }
+
+    // 끝난 구간의 시간을 버킷에 적립한다. 호출자가 mtx 를 들고 있어야 한다.
+    void harvest_locked(slot & sl) {
+        if (sl.bucket < 0) {
+            return;
+        }
+
+        // 링을 한 바퀴 돈 뒤라 대개 이미 끝나 있다. 아직이면 여기서 기다린다.
+        if (cudaEventSynchronize(sl.end) == cudaSuccess) {
+            float ms = 0.0f;
+            if (cudaEventElapsedTime(&ms, sl.beg, sl.end) == cudaSuccess) {
+                kairox_prof().add(sl.bucket, (uint64_t) (ms * 1e6f));
+            }
+        }
+
+        sl.bucket = -1;
+    }
+
+    void drain() {
+        std::lock_guard<std::mutex> lock(mtx);
+
+        for (auto & sl : slots) {
+            harvest_locked(sl);
+            if (sl.beg) {
+                cudaEventDestroy(sl.beg);
+                sl.beg = nullptr;
+            }
+            if (sl.end) {
+                cudaEventDestroy(sl.end);
+                sl.end = nullptr;
+            }
+        }
+    }
+};
+
+static kairox_prof_gpu & kairox_prof_gpu_ring() {
+    static kairox_prof_gpu ring;
+    return ring;
+}
+
+// 노드 이름으로 어느 버킷인지 정한다. cb() 가 "<name>-<il>" 로 붙이므로 접두사로 본다.
+// 이름이 없거나 관심 밖이면 -1.
+static int kairox_prof_bucket_of(const ggml_tensor * node) {
+    if (!node || node->name[0] == '\0') {
+        return -1;
+    }
+    if (strncmp(node->name, "ffn_dfr_k_", 10) == 0 ||
+        strncmp(node->name, "ffn_load_group", 14) == 0 ||
+        strncmp(node->name, "ffn_evict_group", 15) == 0) {
+        return KAIROX_PROF_TOPK;
+    }
+    if (strncmp(node->name, "ffn_dfr_s_", 10) == 0) {
+        return KAIROX_PROF_SCORE;
+    }
+    return -1;
+}
+
+// 진단용: 어떤 노드가 CUDA 디스패치를 지나가는지 한 번만 훑어본다.
+// 이름이 안 붙거나 다른 백엔드로 배정되면 버킷이 0 으로 남으므로 그 원인을 찾는 데 쓴다.
+static void kairox_prof_debug_node(const ggml_tensor * node) {
+    static const bool enabled = get_env_bool("KAIROX_PROFILE_DEBUG", false);
+    static int        left    = 400;
+
+    if (!enabled || left <= 0) {
+        return;
+    }
+    if (strncmp(node->name, "ffn_", 4) == 0) {
+        GGML_LOG_INFO("kairox_prof_debug: node='%s' op=%s\n", node->name, ggml_op_name(node->op));
+        --left;
+    }
+}
+
+// 노드 하나를 감싸는 RAII 가드. 생성자에서 시작 이벤트를, 소멸자에서 끝 이벤트를 찍는다.
+// 관심 밖 노드(분류기가 -1)면 아무것도 하지 않는다.
+struct kairox_prof_node_guard {
+    kairox_prof_gpu::slot * slot   = nullptr;
+    cudaStream_t            stream = nullptr;
+
+    kairox_prof_node_guard(cudaStream_t stream, const ggml_tensor * node) : stream(stream) {
+        if (!k_kairox_profile) {
+            return;
+        }
+
+        kairox_prof_debug_node(node);
+
+        const int bucket = kairox_prof_bucket_of(node);
+        if (bucket < 0) {
+            return;
+        }
+
+        slot = kairox_prof_gpu_ring().acquire(bucket);
+        if (slot) {
+            CUDA_CHECK(cudaEventRecord(slot->beg, stream));
+        }
+    }
+
+    ~kairox_prof_node_guard() {
+        if (slot) {
+            CUDA_CHECK(cudaEventRecord(slot->end, stream));
+        }
+    }
+
+    kairox_prof_node_guard(const kairox_prof_node_guard &)             = delete;
+    kairox_prof_node_guard & operator=(const kairox_prof_node_guard &) = delete;
+};
+
+void kairox_profile_dump() {
+    if (!k_kairox_profile) {
+        return;
+    }
+
+    kairox_prof_gpu_ring().drain();
+
+    const char * path_env = getenv("KAIROX_PROFILE_PATH");
+    const std::string path = path_env ? path_env : "kairox_profile.csv";
+
+    FILE * f = fopen(path.c_str(), "w");
+    if (!f) {
+        GGML_LOG_WARN("%s: '%s' 를 열지 못했다\n", __func__, path.c_str());
+        return;
+    }
+
+    auto & prof = kairox_prof();
+
+    const uint64_t steps = prof.n[KAIROX_PROF_STEP].load();
+
+    fprintf(f, "bucket,calls,total_ms,per_step_ms,per_call_us\n");
+    for (int i = 0; i < KAIROX_PROF_COUNT; ++i) {
+        const uint64_t ns    = prof.ns[i].load();
+        const uint64_t calls = prof.n[i].load();
+
+        fprintf(f, "%s,%llu,%.3f,%.6f,%.3f\n", kairox_prof_name(i), (unsigned long long) calls, ns / 1e6,
+                steps ? ns / 1e6 / steps : 0.0, calls ? ns / 1e3 / calls : 0.0);
+    }
+    fclose(f);
+
+    GGML_LOG_INFO("%s: wrote step profile to '%s' (steps=%llu)\n", __func__, path.c_str(),
+                  (unsigned long long) steps);
+}
+
 static void kairox_batch_reload(char *        weight_base,
                                     char *        cache_base,
                                     size_t        nbytes,
@@ -2703,16 +2892,34 @@ static void ggml_cuda_reload_exec(ggml_backend_cuda_context & ctx, ggml_tensor *
 
     auto * kairox_extra    = (kairox_tensor_extra *) dst->extra;
     auto * kairox_executor = (SingleThreadExecutor *) kairox_extra->kairox_executor;
+    // 전송 태스크는 워커 스레드에서 돌고 끝에 cudaStreamSynchronize 를 하므로,
+    // 호스트 타이머로 감싸면 실제 H2D 시간이 잡힌다. post() 는 함수+인자를 묶어 큐에
+    // 넣으므로, 미리 묶어둔 것을 타이머 람다로 한 번 더 감싸 넘긴다.
+    const auto post_timed = [&](auto && bound) {
+        if (k_kairox_profile) {
+            kairox_executor->post([bound = std::move(bound)]() mutable {
+                const uint64_t t0 = kairox_now_ns();
+                bound();
+                kairox_prof().add(KAIROX_PROF_PCIE, kairox_now_ns() - t0);
+            });
+        } else {
+            kairox_executor->post(std::move(bound));
+        }
+    };
+
     if (k_kairox_gather) {
         // 결정 단위는 그대로 두고 전송만 묶는다. 호출 횟수가 reload_count 개에서 3개로 줄어든다.
-        kairox_executor->post(kairox_gather_reload, weight_base, cache_base, group_nbytes, cudaStreamPerThread,
-                              (const reload_pair *) kairox_lc->reload_plan.data(), kairox_lc->reload_count);
+        post_timed(SingleThreadExecutor::make_bound(kairox_gather_reload, weight_base, cache_base, group_nbytes,
+                                                    cudaStreamPerThread,
+                                                    (const reload_pair *) kairox_lc->reload_plan.data(),
+                                                    kairox_lc->reload_count));
     } else {
         for (size_t window_offset = 0; window_offset < kairox_lc->reload_count;) {
             size_t window_size = MIN(kairox_lc->reload_window_size, kairox_lc->reload_count - window_offset);
 
-            kairox_executor->post(kairox_batch_reload, weight_base, cache_base, group_nbytes,
-                                cudaStreamPerThread, window_offset, window_size, kairox_lc->reload_plan.data());
+            post_timed(SingleThreadExecutor::make_bound(kairox_batch_reload, weight_base, cache_base, group_nbytes,
+                                                        cudaStreamPerThread, window_offset, window_size,
+                                                        kairox_lc->reload_plan.data()));
 
             window_offset += window_size;
         }
@@ -4119,6 +4326,12 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
 
             for (int i = 0; i < cgraph->n_nodes; i++) {
                 ggml_tensor * node = cgraph->nodes[i];
+
+                // KAIROX_PROFILE: 이 루프에는 융합 경로가 여러 개 있고 전부 continue 로
+                // 빠져나가므로, 디스패치 호출만 감싸면 그 노드들을 놓친다. 반복 본문 전체를
+                // RAII 로 감싸 어떤 경로로 나가든 끝 이벤트가 기록되게 한다.
+                kairox_prof_node_guard prof_guard(cuda_ctx->stream(), node);
+
                 if (is_concurrent_event_active) {
                     GGML_ASSERT(concurrent_event);
 

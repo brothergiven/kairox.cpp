@@ -1298,9 +1298,12 @@ void llm_graph_context::build_sparse_ffn_dfr(kairox_layer_cache * lc,
                                              float                    threshold,
                                              int                      il) const {
     ggml_tensor * mask = ggml_shifted_step(ctx0, lc->sparse_idx, -threshold, false);
+    // KAIROX_PROFILE 이 노드 이름 접두사로 구간을 가른다 (ffn_dfr_s_ = 점수 갱신, ffn_dfr_k_ = top-k).
+    ggml_format_name(mask, "ffn_dfr_s_mask-%d", il);
     // sparse_idx는 predictor의 sigmoid 출력. 0.5보다 크면 1, 아니면 0으로 mask를 만든다.
     if (lc->sparse_idx->ne[1] > 1) {
         mask = ggml_sum_cols(ctx0, mask);
+        ggml_format_name(mask, "ffn_dfr_s_masksum-%d", il);
     }
 
     /**
@@ -1314,6 +1317,7 @@ void llm_graph_context::build_sparse_ffn_dfr(kairox_layer_cache * lc,
         ctx0, ggml_sum_rows(ctx0, ggml_reshape_2d(ctx0, mask, lc->cache_shape.group_size, lc->cache_shape.n_groups)));
     ggml_tensor * dfr_scores = ggml_scale_add(ctx0, lc->dfr_scores, deltas, (float *) lc->dfr_ema_coeffs->data,
                                               (float) lc->sparse_idx->ne[1] * lc->cache_shape.group_size, true);
+    ggml_format_name(dfr_scores, "ffn_dfr_s_ema-%d", il);
     /**
     * 논문 알고리즘에는 One-Hit Wonder 현상을 막기 위해서 tau 값을 주고있다.
     * One-Hit Wonder 현상은 어떤 뉴런이 한 번만 활성화되었는데, EMA 값은 높게 나와서 계속 top-k에 포함되는 현상이다.
@@ -1327,26 +1331,39 @@ void llm_graph_context::build_sparse_ffn_dfr(kairox_layer_cache * lc,
     const float tau = (1.0f - *(float *) lc->dfr_ema_coeffs->data) + 1e-6f;
     // mask 값이 0이면 topk에 포함되지 않도록
     ggml_tensor * threshold_mask = ggml_shifted_step(ctx0, dfr_scores, -tau, false);
+    ggml_format_name(threshold_mask, "ffn_dfr_s_tau-%d", il);
     ggml_tensor * filtered_dfr_scores = ggml_mul(ctx0, dfr_scores, threshold_mask);
+    ggml_format_name(filtered_dfr_scores, "ffn_dfr_s_filtered-%d", il);
 
     // 계산된 DFR 점수에 따라 top-k 그룹을 선택. argsort() API 사용 !
     // 이 때 k 값은 VRAM capacity이다, 즉 존재하는 그룹들 중 DFR Score에 따라 top k 그룹들이 VRAM으로 load 되는 것
     ggml_tensor * topk_idx   = ggml_argsort_top_k(ctx0, filtered_dfr_scores, lc->cache_shape.n_cached_groups);
+    ggml_format_name(topk_idx, "ffn_dfr_k_argsort-%d", il);
     // top-k 그룹에 대한 마스크 생성
-    ggml_tensor * topk_mask  = ggml_sum_cols(ctx0, ggml_get_rows(ctx0, kairox_cm->group_identity, topk_idx));
+    // get_rows 는 n_cached_groups x n_group 을 훑으므로 argsort(n log n) 와 스케일이 다르다.
+    // 둘 다 ffn_dfr_k_ 로 묶여 있으니, topk 가 크게 나오면 이 둘을 따로 갈라 봐야 한다.
+    ggml_tensor * topk_rows  = ggml_get_rows(ctx0, kairox_cm->group_identity, topk_idx);
+    ggml_format_name(topk_rows, "ffn_dfr_k_getrows-%d", il);
+    ggml_tensor * topk_mask  = ggml_sum_cols(ctx0, topk_rows);
+    ggml_format_name(topk_mask, "ffn_dfr_k_mask-%d", il);
 
     ggml_tensor * diff_mask  = ggml_xor(ctx0, lc->group_mask, topk_mask);
+    ggml_format_name(diff_mask, "ffn_dfr_k_diff-%d", il);
 
     // load group tensor 완성
     load_group = ggml_and(ctx0, topk_mask, diff_mask);
     cb(load_group, "ffn_load_group", il);
+    ggml_format_name(load_group, "ffn_dfr_k_load-%d", il);
     ggml_build_forward_expand(gf, load_group);
 
     // evict group tensor 완성
     evict_group = ggml_and(ctx0, lc->group_mask, diff_mask);
     cb(evict_group, "ffn_evict_group", il);
+    ggml_format_name(evict_group, "ffn_dfr_k_evict-%d", il);
     ggml_build_forward_expand(gf, evict_group);
-    ggml_build_forward_expand(gf, ggml_cpy(ctx0, topk_mask, lc->group_mask));
+    ggml_tensor * mask_cpy = ggml_cpy(ctx0, topk_mask, lc->group_mask);
+    ggml_format_name(mask_cpy, "ffn_dfr_k_cpy-%d", il);
+    ggml_build_forward_expand(gf, mask_cpy);
 }
 
 ggml_tensor * llm_graph_context::build_sparse_ffn_hidden(ggml_tensor *& cur_up,

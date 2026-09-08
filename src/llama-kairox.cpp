@@ -496,6 +496,9 @@ static void kairox_dump_activation_csv(const std::vector<kairox_layer_cache *>  
 
 
 kairox_cache_manager::~kairox_cache_manager() {
+    // 스텝 시간 분해 결과(KAIROX_PROFILE)도 같은 시점에 떨군다.
+    kairox_profile_dump();
+
     if (k_kairox_dump_activation) {
         kairox_dump_activation_csv(layer_caches);
     }
