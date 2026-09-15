@@ -1,4 +1,21 @@
-# Exp1: 그룹 크기 별 Hit Rate 비교
+## Get Started
+
+### Docker 세팅
+
+### 모델 다운로드
+
+
+
+
+---
+
+## HW Spec 별 실험 Configuration
+
+
+
+---
+
+## Exp1: 그룹 크기 별 Hit Rate 비교
 
 그룹 크기가 1, 16일 때 각각 Hit Rate를 비교한다.
 
@@ -12,7 +29,7 @@ bash exp1_hit_g1_g16.sh
 
 ---
 
-# Exp2: Gather 로직 적용 후 그룹 크기 별 총 처리량 비교
+## Exp2: Gather 로직 적용 후 그룹 크기 별 총 처리량 비교
 
 Gather 로직 적용 전후의 그룹 크기 별 총 처리량을 비교한다.
 

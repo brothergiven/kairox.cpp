@@ -302,7 +302,7 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
         reorder_perms[il] =
             create_tensor(ctx_cpu, GGML_TYPE_I32, { lc->cache_shape.n_neurons }, il, "ffn_reorder_perms");
     }
-    group_identity   = create_tensor(ctx_gpu, GGML_TYPE_F32, { n_group, n_group }, 999, "ffn_group_identity");
+    // group_identity   = create_tensor(ctx_gpu, GGML_TYPE_F32, { n_group, n_group }, 999, "ffn_group_identity");
     sparse_threshold = 0.5f;
 
     backend_cpu = ggml_backend_cpu_init();
@@ -325,11 +325,11 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
     gguf_free(ctx_gguf);
     ggml_free(ctx_meta);
 
-    std::vector<float> f32_mat_buf(n_group * n_group);
-    for (int i = 0; i < n_group; ++i) {
-        f32_mat_buf[i * n_group + i] = 1.0f;
-    }
-    ggml_backend_tensor_set(group_identity, f32_mat_buf.data(), 0, ggml_nbytes(group_identity));
+    // std::vector<float> f32_mat_buf(n_group * n_group);
+    // for (int i = 0; i < n_group; ++i) {
+    //     f32_mat_buf[i * n_group + i] = 1.0f;
+    // }
+    // ggml_backend_tensor_set(group_identity, f32_mat_buf.data(), 0, ggml_nbytes(group_identity));
 
     std::vector<uint8_t> src_buf_vec(sizeof(float) * n_embd * n_ff);
     std::vector<uint8_t> dst_buf_vec(sizeof(float) * n_embd * n_ff);

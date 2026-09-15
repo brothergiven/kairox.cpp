@@ -588,6 +588,8 @@ extern "C" {
 
         GGML_OP_GLU,
 
+        GGML_OP_INDEX_MASK,
+
         GGML_OP_COUNT,
     };
 
@@ -1174,6 +1176,20 @@ extern "C" {
     GGML_API struct ggml_tensor * ggml_fatrelu(
             struct ggml_context * ctx,
             struct ggml_tensor * a, float threshold, bool inplace);
+
+// 인덱스 목록을 0/1 마스크로 편다: dst[idx[i]] = 1, 나머지 0.
+//
+// 원래 KAIROX 는 n_group x n_group 항등행렬을 만들어 get_rows + sum_cols 로 같은 일을 했다.
+// ggml 에 스캐터가 없어서 gather 로 흉내 낸 것인데, 그 행렬이 O(n_group^2) F32 라
+// group_size 를 낮출수록 VRAM 을 잡아먹는다 (n_ff=11008, g=1 이면 462 MiB).
+// 이 op 는 같은 결과를 O(n) 으로 낸다.
+//
+//   idx : I32, 켤 위치들
+//   n   : 마스크 길이. 결과는 [n, 1, 1, 1] F32
+    GGML_API struct ggml_tensor * ggml_index_mask(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * idx,
+            int64_t               n);
 
     GGML_API struct ggml_tensor * ggml_shifted_step(
             struct ggml_context * ctx,

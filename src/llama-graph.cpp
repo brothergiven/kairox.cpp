@@ -1334,8 +1334,11 @@ void llm_graph_context::build_sparse_ffn_dfr(kairox_layer_cache * lc,
     // ggml_tensor * topk_idx   = ggml_argsort_top_k(ctx0, filtered_dfr_scores, lc->cache_shape.n_cached_groups);
     // top-k 그룹에 대한 마스크 생성
     ggml_tensor * topk_idx   = ggml_argsort_top_k(ctx0, dfr_scores, lc->cache_shape.n_cached_groups);
-    ggml_tensor * topk_mask  = ggml_sum_cols(ctx0, ggml_get_rows(ctx0, kairox_cm->group_identity, topk_idx));
-
+    // ggml_tensor * topk_mask  = ggml_sum_cols(ctx0, ggml_get_rows(ctx0, kairox_cm->group_identity, topk_idx));
+    // top-k 그룹에 대한 마스크 생성.
+    // 원래는 n_group x n_group 항등행렬에서 get_rows + sum_cols 로 만들었는데, 그 행렬이
+    // O(n_group^2) F32 라 group_size 를 낮출수록 VRAM 을 먹었다. ggml_index_mask 는 O(n_group) 이다.
+    ggml_tensor * topk_mask  = ggml_index_mask(ctx0, topk_idx, lc->cache_shape.n_groups);
     ggml_tensor * diff_mask  = ggml_xor(ctx0, lc->group_mask, topk_mask);
 
     // load group tensor 완성

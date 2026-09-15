@@ -1,3 +1,4 @@
+#include "dfr-fusion.cuh"
 #include "ggml-backend-impl.h"
 #include "ggml-cuda.h"
 #include "ggml-cuda/acc.cuh"
@@ -2926,6 +2927,9 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
         case GGML_OP_SHIFTED_STEP:
             ggml_cuda_op_shifted_step(ctx, dst);
             break;
+        case GGML_OP_INDEX_MASK:
+            ggml_cuda_op_index_mask(ctx, dst);
+            break;
         case GGML_OP_SILU_BACK:
             ggml_cuda_op_silu_back(ctx, dst);
             break;
@@ -3634,26 +3638,81 @@ static bool ggml_cuda_try_kairox_dfr_fusion(ggml_backend_cuda_context & cuda_ctx
         return true;
     }
 
-    if (cgraph->nodes[i]->op != GGML_OP_GET_ROWS) {
+    // if (cgraph->nodes[i]->op != GGML_OP_GET_ROWS) {
+    //     return false;
+    // }
+    //
+    // ggml_tensor * get_rows = cgraph->nodes[i];
+    // ggml_tensor * topk_idx = get_rows->src[1];
+    // if (!topk_idx || topk_idx->op != GGML_OP_VIEW) {
+    //     return false;
+    // }
+    //
+    // if (i + 5 >= cgraph->n_nodes) {
+    //     return false;
+    // }
+    //
+    // ggml_tensor * topk_mask = cgraph->nodes[i + 1];
+    // if (topk_mask->op != GGML_OP_SUM_COLS || topk_mask->src[0] != get_rows) {
+    //     return false;
+    // }
+    //
+    // ggml_tensor * diff_mask = cgraph->nodes[i + 2];
+    // if (diff_mask->op != GGML_OP_XOR) {
+    //     return false;
+    // }
+    //
+    // if (diff_mask->src[0] != topk_mask && diff_mask->src[1] != topk_mask) {
+    //     return false;
+    // }
+    //
+    // ggml_tensor * group_mask  = diff_mask->src[0] == topk_mask ? diff_mask->src[1] : diff_mask->src[0];
+    // ggml_tensor * load_group  = cgraph->nodes[i + 3];
+    // ggml_tensor * evict_group = cgraph->nodes[i + 4];
+    // ggml_tensor * cpy         = cgraph->nodes[i + 5];
+    //
+    // if (load_group->op != GGML_OP_AND ||
+    //     evict_group->op != GGML_OP_AND ||
+    //     cpy->op != GGML_OP_CPY ||
+    //     cpy->src[0] != topk_mask ||
+    //     cpy->src[1] != group_mask ||
+    //     !((load_group->src[0] == diff_mask && load_group->src[1] == topk_mask) || (load_group->src[0] == topk_mask && load_group->src[1] == diff_mask)) ||
+    //     !((evict_group->src[0] == diff_mask && evict_group->src[1] == group_mask) || (evict_group->src[0] == group_mask && evict_group->src[1] == diff_mask))) {
+    //     return false;
+    // }
+    //
+    // if (!is_cuda_contiguous(topk_idx, GGML_TYPE_I32) ||
+    //     topk_idx->ne[2] != 1 || topk_idx->ne[3] != 1 ||
+    //     !is_cuda_contiguous(group_mask, GGML_TYPE_F32) ||
+    //     !is_cuda_row(load_group, GGML_TYPE_F32) ||
+    //     !is_cuda_row(evict_group, GGML_TYPE_F32)) {
+    //     return false;
+    // }
+    //
+    // if (group_mask->ne[0] != load_group->ne[0] ||
+    //     group_mask->ne[0] != evict_group->ne[0] ||
+    //     !ggml_node_has_n_uses(cgraph, i, 1) ||
+    //     !ggml_node_has_n_uses(cgraph, i + 1, 3) ||
+    //     !ggml_node_has_n_uses(cgraph, i + 2, 2)) {
+    //     return false;
+    // }
+
+    // 마스크 생성이 항등행렬 get_rows + sum_cols 에서 index_mask 한 노드로 바뀌면서 체인이 한 칸 짧아졌다.
+    if (cgraph->nodes[i]->op != GGML_OP_INDEX_MASK) {
         return false;
     }
 
-    ggml_tensor * get_rows = cgraph->nodes[i];
-    ggml_tensor * topk_idx = get_rows->src[1];
+    ggml_tensor * topk_mask = cgraph->nodes[i];
+    ggml_tensor * topk_idx  = topk_mask->src[0];
     if (!topk_idx || topk_idx->op != GGML_OP_VIEW) {
         return false;
     }
 
-    if (i + 5 >= cgraph->n_nodes) {
+    if (i + 4 >= cgraph->n_nodes) {
         return false;
     }
 
-    ggml_tensor * topk_mask = cgraph->nodes[i + 1];
-    if (topk_mask->op != GGML_OP_SUM_COLS || topk_mask->src[0] != get_rows) {
-        return false;
-    }
-
-    ggml_tensor * diff_mask = cgraph->nodes[i + 2];
+    ggml_tensor * diff_mask = cgraph->nodes[i + 1];
     if (diff_mask->op != GGML_OP_XOR) {
         return false;
     }
@@ -3663,9 +3722,9 @@ static bool ggml_cuda_try_kairox_dfr_fusion(ggml_backend_cuda_context & cuda_ctx
     }
 
     ggml_tensor * group_mask  = diff_mask->src[0] == topk_mask ? diff_mask->src[1] : diff_mask->src[0];
-    ggml_tensor * load_group  = cgraph->nodes[i + 3];
-    ggml_tensor * evict_group = cgraph->nodes[i + 4];
-    ggml_tensor * cpy         = cgraph->nodes[i + 5];
+    ggml_tensor * load_group  = cgraph->nodes[i + 2];
+    ggml_tensor * evict_group = cgraph->nodes[i + 3];
+    ggml_tensor * cpy         = cgraph->nodes[i + 4];
 
     if (load_group->op != GGML_OP_AND ||
         evict_group->op != GGML_OP_AND ||
@@ -3687,9 +3746,8 @@ static bool ggml_cuda_try_kairox_dfr_fusion(ggml_backend_cuda_context & cuda_ctx
 
     if (group_mask->ne[0] != load_group->ne[0] ||
         group_mask->ne[0] != evict_group->ne[0] ||
-        !ggml_node_has_n_uses(cgraph, i, 1) ||
-        !ggml_node_has_n_uses(cgraph, i + 1, 3) ||
-        !ggml_node_has_n_uses(cgraph, i + 2, 2)) {
+        !ggml_node_has_n_uses(cgraph, i, 3) ||       // topk_mask: xor, and(load), cpy
+        !ggml_node_has_n_uses(cgraph, i + 1, 2)) {   // diff_mask: and(load), and(evict)
         return false;
     }
 
@@ -3700,7 +3758,7 @@ static bool ggml_cuda_try_kairox_dfr_fusion(ggml_backend_cuda_context & cuda_ctx
         load_group,
         evict_group);
 
-    i += 5;
+    i += 4;
     return true;
 }
 
@@ -5529,6 +5587,7 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
         case GGML_OP_TIMESTEP_EMBEDDING:
         case GGML_OP_LEAKY_RELU:
         case GGML_OP_FATRELU:
+        case GGML_OP_INDEX_MASK:
         case GGML_OP_SHIFTED_STEP:
         case GGML_OP_RWKV_WKV6:
         case GGML_OP_GATED_LINEAR_ATTN:

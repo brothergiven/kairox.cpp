@@ -3027,6 +3027,7 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
         case GGML_OP_SCALE_ADD:
         case GGML_OP_XOR:
         case GGML_OP_AND:
+        case GGML_OP_INDEX_MASK:
         case GGML_OP_SHIFTED_STEP:
         case GGML_OP_SUM_COLS:
         case GGML_OP_SCATTER_ROWS:

@@ -17,7 +17,7 @@ struct kairox_cache_manager {
     ggml_backend_buffer_t buf_cpu     = nullptr;
     ggml_backend_buffer_t buf_gpu     = nullptr;
 
-    ggml_tensor * group_identity   = nullptr;
+    // ggml_tensor * group_identity   = nullptr;
     float         sparse_threshold = 0.5f;
 
     kairox_cache_manager(llama_model * model, const char * kairox_ms_path, int64_t vram_budget);

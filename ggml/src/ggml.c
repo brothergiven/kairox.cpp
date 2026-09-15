@@ -1074,9 +1074,10 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "OPT_STEP_SGD",
 
     "GLU",
+    "INDEX_MASK",
 };
 
-static_assert(GGML_OP_COUNT == 107, "GGML_OP_COUNT != 107");
+static_assert(GGML_OP_COUNT == 108, "GGML_OP_COUNT != 108");
 
 static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "none",
@@ -1184,6 +1185,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "sgd(x)",
 
     "glu(x)",
+    "mask(i)",
 };
 
 static_assert(GGML_OP_POOL_COUNT == 2, "GGML_OP_POOL_COUNT != 2");
@@ -2811,6 +2813,24 @@ struct ggml_tensor * ggml_fatrelu(
 
     return result;
 }
+
+// ggml_index_mask
+
+struct ggml_tensor * ggml_index_mask(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * idx,
+        int64_t               n) {
+    GGML_ASSERT(idx->type == GGML_TYPE_I32);
+    GGML_ASSERT(n > 0);
+
+    struct ggml_tensor * result = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, n);
+
+    result->op     = GGML_OP_INDEX_MASK;
+    result->src[0] = idx;
+
+    return result;
+}
+
 
 // ggml_shifted_step
 

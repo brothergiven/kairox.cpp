@@ -239,3 +239,44 @@ void ggml_cuda_op_dfr_mask(ggml_backend_cuda_context & ctx,
             topk_data, topk_stride, k, n_tokens, n_groups, group_mask, load_group_data, evict_group_data);
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// ggml_index_mask — 인덱스 목록을 0/1 마스크로 편다.
+//
+// 원래 KAIROX 는 n_group x n_group 항등행렬에서 get_rows 로 원-핫 행들을 뽑아 sum_cols 로
+// 더했다. 그 행렬이 O(n_group^2) 이라 group_size 를 낮출수록 VRAM 을 잡아먹는다.
+// 여기서는 0 으로 채운 뒤 K 개만 1 로 쓴다.
+// ---------------------------------------------------------------------------
+static __global__ void kairox_index_mask_kernel(const int32_t * __restrict__ idx,
+                                                float * __restrict__ dst,
+                                                int k, int n) {
+    const int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= k) {
+        return;
+    }
+    const int j = idx[i];
+    if (j >= 0 && j < n) {
+        dst[j] = 1.0f;
+    }
+}
+
+void ggml_cuda_op_index_mask(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
+    const ggml_tensor * idx = dst->src[0];
+
+    GGML_ASSERT(idx->type == GGML_TYPE_I32);
+    GGML_ASSERT(dst->type == GGML_TYPE_F32);
+    GGML_ASSERT(ggml_is_contiguous(dst));
+
+    const int    n      = (int) ggml_nelements(dst);
+    const int    k      = (int) ggml_nelements(idx);
+    cudaStream_t stream = ctx.stream();
+
+    CUDA_CHECK(cudaMemsetAsync(dst->data, 0, ggml_nbytes(dst), stream));
+    if (k > 0) {
+        const int threads = 256;
+        kairox_index_mask_kernel<<<(k + threads - 1) / threads, threads, 0, stream>>>(
+            (const int32_t *) idx->data, (float *) dst->data, k, n);
+        CUDA_CHECK(cudaGetLastError());
+    }
+}

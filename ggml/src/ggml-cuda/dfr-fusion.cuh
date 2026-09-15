@@ -24,3 +24,6 @@ void ggml_cuda_op_dfr_mask(ggml_backend_cuda_context & ctx,
                            float *                     group_mask,
                            ggml_tensor *               load_group,
                            ggml_tensor *               evict_group);
+
+
+void ggml_cuda_op_index_mask(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
