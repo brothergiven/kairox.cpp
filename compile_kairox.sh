@@ -40,4 +40,4 @@ esac
 
 cmake -B "$build_dir" -DCMAKE_BUILD_TYPE="$build_type" "${cmake_opts[@]}"
 cmake --build "$build_dir" --config "$build_type" -j"$(nproc)" \
-    --target llama-completion llama-speculative llama-quantize
+    --target llama-completion llama-speculative llama-quantize llama-batched

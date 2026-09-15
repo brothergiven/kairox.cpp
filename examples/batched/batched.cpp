@@ -65,7 +65,10 @@ int main(int argc, char ** argv) {
 
     llama_context_params ctx_params = common_context_params_to_llama(params);
 
-    ctx_params.n_ctx   = n_kv_req;
+    // 원본은 n_ctx 를 n_kv_req 로 덮어써 -c 를 무시한다. 그러면 np 마다 KV 버퍼 크기가 달라지고,
+    // KAIROX 는 VRAM 예산에서 KV 를 뺀 나머지로 캐시를 잡으므로 np 마다 캐시 용량이 달라진다
+    // (np=1: 512 / np=4: 2048 -> 캐시 36% 차이). -c 를 주면 그 값을 하한으로 써서 np 간 KV 크기를 고정한다.
+    ctx_params.n_ctx   = std::max<uint32_t>(n_kv_req, params.n_ctx);
     ctx_params.n_batch = std::max(n_predict, n_parallel);
 
     auto sparams = llama_sampler_chain_default_params();
@@ -94,6 +97,13 @@ int main(int argc, char ** argv) {
     if (ctx == NULL) {
         LOG_ERR("%s: error: failed to create the llama_context\n" , __func__);
         return 1;
+    }
+        // 이 예제는 common_init_from_params 를 거치지 않으므로 KAIROX 캐시 매니저가
+    // 초기화되지 않는다. 초기화 없이 그래프를 돌리면 null 캐시를 참조해 죽는다.
+    // completion.cpp / speculative.cpp 와 같은 방식으로 붙인다.
+    if (!params.kairox_ms_path.empty()) {
+        kairox_init_from_model_and_ctx(model, ctx, nullptr, nullptr,
+                                       params.kairox_ms_path.c_str(), params.vram_budget);
     }
 
     const int n_ctx = llama_n_ctx(ctx);
@@ -189,9 +199,11 @@ int main(int argc, char ** argv) {
             }
 
             const llama_token new_token_id = llama_sampler_sample(sampler_configs[i].sampler, ctx, i_batch[i]);
-
-            // is it an end of generation? -> mark the stream as finished
-            if (llama_vocab_is_eog(vocab, new_token_id) || n_cur == n_predict) {
+            // 이 예제는 샘플러 체인을 직접 만들어 --ignore-eos 의 로짓 바이어스가 적용되지 않는다.
+            // 스트림이 먼저 끝나면 실효 배치가 -np 아래로 떨어져 배치 비교가 성립하지 않으므로,
+            // 플래그가 켜져 있으면 EOG 로 끊지 않는다.
+            const bool eog = llama_vocab_is_eog(vocab, new_token_id) && !params.sampling.ignore_eos;
+            if (eog || n_cur == n_predict) {
                 i_batch[i] = -1;
                 LOG("\n");
                 if (n_parallel > 1) {
