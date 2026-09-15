@@ -36,6 +36,17 @@ inline float get_env_float(const char * env, float default_value) {
     return default_value;
 }
 
+inline int get_env_int(const char * env, int default_value) {
+    if (const char * p = getenv(env)) {
+        char * end = nullptr;
+        long   v   = strtol(p, &end, 10);
+        if (end != p && *end == '\0') {
+            return (int) v;
+        }
+    }
+    return default_value;
+}
+
 inline bool get_env_bool(const char * env, bool default_value) {
     if (const char * p = getenv(env)) {
         char * end = nullptr;
@@ -52,6 +63,16 @@ const float k_kairox_lambda_init           = get_env_float("KAIROX_DFR_LAMBDA_IN
 const float k_kairox_dfr_lambda_adapt_rate = get_env_float("KAIROX_DFR_LAMBDA_ADAPT_RATE", 0.05f);
 const float k_kairox_swap_budget_min      = get_env_float("KAIROX_SWAP_BUDGET_MIN", 0.01f); // swap budget 최소값
 const bool k_kairox_dump_activation        = get_env_bool("KAIROX_DUMP_ACTIVATION", false); // 환경변수로 activation 계측 할 건지 결정.
+// --- 결정 단위 / 전송 단위 분리 (gather & scatter) ---------------------------
+// 원본 reload 는 그룹 하나마다 cudaMemcpyAsync 를 한 번씩 호출해 전송 시간이 바이트가 아니라 호출 수에 묶인다.
+// 흩어진 그룹을 pinned staging 버퍼로 모아 H2D 1회 + GPU scatter 커널 1회로 옮긴다.
+// 기본 false — 원본 경로를 그대로 두고 env 로만 켠다.
+const bool k_kairox_gather            = get_env_bool("KAIROX_GATHER", false);
+// staging 버퍼 바이트 예산(MiB). 한 번의 reload 가 이보다 크면 청크로 나눈다.
+const int  k_kairox_gather_budget_mib = get_env_int("KAIROX_GATHER_BUDGET_MIB", 64);
+// scatter 직후 GPU 캐시 슬롯을 되읽어 원본 가중치와 바이트 비교한다. 매우 느리다 — 정확성 검증 전용.
+// (KAIROX 는 reload 가 compute 와 비동기로 경쟁해 같은 seed 로도 출력이 달라지므로 출력 비교로는 검증 불가)
+const bool k_kairox_gather_verify     = get_env_bool("KAIROX_GATHER_VERIFY", false);
 
 /**
  * 캐시 관리 정책을 실제로 수행하는 구조체
