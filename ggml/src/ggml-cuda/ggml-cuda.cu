@@ -2614,6 +2614,8 @@ static void kairox_dump_residency_counts(kairox_layer_cache * kairox_lc, int nto
 static void ggml_cuda_reload_plan(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
     auto * kairox_lc = kairox_decode_ptr<kairox_layer_cache>(dst->op_params, 0);
 
+    kairox_lc->planned_budget = kairox_lc->reload_budget_groups();
+
     CUDA_CHECK(cudaMemcpyAsync((float *) kairox_lc->load_group_host->data, (const float *) dst->src[0]->data,
                                sizeof(float) * kairox_lc->cache_shape.n_groups, cudaMemcpyDeviceToHost, ctx.stream()));
     CUDA_CHECK(cudaMemcpyAsync((float *) kairox_lc->evict_group_host->data, (const float *) dst->src[1]->data,
@@ -2714,7 +2716,7 @@ static void ggml_cuda_reload_exec(ggml_backend_cuda_context & ctx, ggml_tensor *
         kairox_executor->make_anchor(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_MUL_MAT_SPARSE);
     } else if (kairox_wt == KAIROX_FFN_DOWN) {
         kairox_executor->make_anchor(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_AXPY_SPARSE,
-                                   &kairox_lc->dfr_clamp_k, kairox_lc->cache_shape.n_cached_groups);
+                                   &kairox_lc->dfr_swap_budget);
     }
     GGML_UNUSED(ctx);
 }

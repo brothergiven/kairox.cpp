@@ -67,7 +67,7 @@ void kairox_layer_cache::kairox_reload_plan() {
     reload_count = 0;
     GGML_ASSERT(n_groups_to_load == n_groups_to_evict); // 로드할 그룹과 evict할 그룹의 개수가 동일해야 함
     reload_planned_count        = n_groups_to_load;
-    const int reload_budget     = std::clamp(dfr_clamp_k.load(), 1, cache_shape.n_cached_groups);
+    const int reload_budget     = planned_budget; // reload_budget_groups() : 캐시 대비 비율에 따라 reload할 그룹의 개수를 결정
     const int n_pairs_to_reload = std::min(n_groups_to_load, reload_budget); // 로드할 그룹과 evict할 그룹의 개수 중 작은 값을 선택하여 reload할 그룹의 개수를 결정
 
     for (int i = 0; i < n_pairs_to_reload; ++i) { // 로드할 그룹과 evict할 그룹의 개수만큼 반복
@@ -249,7 +249,7 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
         lc->reload_plan.resize(lc->cache_shape.n_cached_neurons);
         lc->groups_to_load.resize(lc->cache_shape.n_groups);
         lc->groups_to_evict.resize(lc->cache_shape.n_groups);
-        lc->dfr_clamp_k.store(lc->cache_shape.n_cached_groups);
+        lc->dfr_swap_budget.store(1.0f);
         lc->gpu_only = (lc->cache_shape.n_cached_neurons == lc->cache_shape.n_neurons);
 
         // 계측 플래그 on일 때

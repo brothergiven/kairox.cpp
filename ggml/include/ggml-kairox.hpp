@@ -3,6 +3,7 @@
 #include "ggml.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -49,6 +50,7 @@ inline bool get_env_bool(const char * env, bool default_value) {
 const bool  k_enable_kairox_parallel       = get_env_bool("KAIROX_PARALLEL", false);
 const float k_kairox_lambda_init           = get_env_float("KAIROX_DFR_LAMBDA_INIT", 0.67f); // lambda 초기 값
 const float k_kairox_dfr_lambda_adapt_rate = get_env_float("KAIROX_DFR_LAMBDA_ADAPT_RATE", 0.05f);
+const float k_kairox_swap_budget_min      = get_env_float("KAIROX_SWAP_BUDGET_MIN", 0.01f); // swap budget 최소값
 const bool k_kairox_dump_activation        = get_env_bool("KAIROX_DUMP_ACTIVATION", false); // 환경변수로 activation 계측 할 건지 결정.
 
 /**
@@ -94,7 +96,10 @@ struct kairox_layer_cache {
     std::vector<reload_pair> reload_plan;
     std::vector<int>         groups_to_load;
     std::vector<int>         groups_to_evict;
-    std::atomic<int>         dfr_clamp_k = 0;
+    // std::atomic<int>         dfr_clamp_k = 0;
+    std::atomic<float>       dfr_swap_budget = { 1.0f }; // 캐시 대비 비율. 1.0이면 캐시 전체를 스왑할 수 있음. 0.5이면 캐시 절반만 스왑 가능
+    int                     planned_budget = 0; // RELOAD_PLAN 한 번에 스왑할 수 있는 그룹 개수
+    std::vector<float>      dfr_score_host;
     bool                     gpu_only    = false;
 
     /**
@@ -123,6 +128,11 @@ struct kairox_layer_cache {
 
     kairox_layer_cache()  = default;
     ~kairox_layer_cache() = default;
+
+    int reload_budget_groups() const {
+        const int cap = cache_shape.n_cached_groups;
+        return std::clamp((int) std::ceil(dfr_swap_budget.load() * cap), 1, cap); // ceil 로 올림하여 최소 1개 이상, 최대 cap 이하로 제한
+    }
 
     ggml_tensor * build_reload_plan(ggml_context * ctx0, ggml_tensor * load_group, ggml_tensor * evict_group);
     ggml_tensor * build_reload_exec(ggml_context * ctx0, ggml_tensor * cur, kairox_weight_type kairox_wt);
@@ -194,7 +204,7 @@ struct SingleThreadExecutor {
         return fut;
     }
 
-    void make_anchor(KairoxWaitType wait_type, std::atomic<int> * dfr_clamp_k = nullptr, int dfr_clamp_k_cap = 0) {
+    void make_anchor(KairoxWaitType wait_type, std::atomic<float>* swap_budget = nullptr) {
         AnchorState * anchor = anchor_ref(wait_type);
 
         {
@@ -204,7 +214,7 @@ struct SingleThreadExecutor {
             anchor->active     = true;
         }
 
-        enqueue_io([this, anchor, dfr_clamp_k, dfr_clamp_k_cap] {
+        enqueue_io([this, anchor, swap_budget] {
             std::deque<std::function<void()>> to_move;
             {
                 std::lock_guard<std::mutex> lock(mtx_);
@@ -220,14 +230,16 @@ struct SingleThreadExecutor {
                 cv_.notify_one();
             }
 
-            // For simplicity, decrease the maximum load directly when reloading.
-            if (k_kairox_dfr_lambda_adapt_rate > 0.0f) {
-                if (dfr_clamp_k && dfr_clamp_k_cap > 0) {
-                    int cur = dfr_clamp_k->load();
-                    int nxt = (int) (cur * (1.0f + (to_move.empty() ? k_kairox_dfr_lambda_adapt_rate :
-                                                                      -k_kairox_dfr_lambda_adapt_rate)));
-                    dfr_clamp_k->store(std::clamp(nxt, 1, dfr_clamp_k_cap));
-                }
+            // swap budget을 조정하는 로직을 여기에 추가할 수 있음
+            // swap budget 이 조정되는 규칙은
+            // 1. to_move 가 비어있으면 swap budget을 증가시킴 (더 많은 그룹을 스왑할 수 있도록)
+            // 2. to_move 가 비어있지 않으면 swap budget을 감소시킴
+            // 3. 현재 swap budget 값에 k_kairox_dfr_lambda_adapt_rate를 곱하여 조정
+            if (k_kairox_dfr_lambda_adapt_rate > 0.0f && swap_budget) {
+                const float cur = swap_budget->load();
+                const float nxt = to_move.empty() ? cur * (1.0f + k_kairox_dfr_lambda_adapt_rate)
+                                                  : cur / (1.0f + k_kairox_dfr_lambda_adapt_rate);
+                swap_budget->store(std::clamp(nxt, k_kairox_swap_budget_min, 1.0f));
             }
         });
     }
