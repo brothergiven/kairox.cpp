@@ -1324,15 +1324,16 @@ void llm_graph_context::build_sparse_ffn_dfr(kairox_layer_cache * lc,
     /**
      * 지금의 tau 필터링은 그룹 단위로 수행되고 있다. 이걸 사실 뉴런 단위로 해야하는 것 아닌가? 
      */
-    const float tau = (1.0f - *(float *) lc->dfr_ema_coeffs->data) + 1e-6f;
+    // const float tau = (1.0f - *(float *) lc->dfr_ema_coeffs->data) + 1e-6f;
     // mask 값이 0이면 topk에 포함되지 않도록
-    ggml_tensor * threshold_mask = ggml_shifted_step(ctx0, dfr_scores, -tau, false);
-    ggml_tensor * filtered_dfr_scores = ggml_mul(ctx0, dfr_scores, threshold_mask);
+    // ggml_tensor * threshold_mask = ggml_shifted_step(ctx0, dfr_scores, -tau, false);
+    // ggml_tensor * filtered_dfr_scores = ggml_mul(ctx0, dfr_scores, threshold_mask);
 
     // 계산된 DFR 점수에 따라 top-k 그룹을 선택. argsort() API 사용 !
     // 이 때 k 값은 VRAM capacity이다, 즉 존재하는 그룹들 중 DFR Score에 따라 top k 그룹들이 VRAM으로 load 되는 것
-    ggml_tensor * topk_idx   = ggml_argsort_top_k(ctx0, filtered_dfr_scores, lc->cache_shape.n_cached_groups);
+    // ggml_tensor * topk_idx   = ggml_argsort_top_k(ctx0, filtered_dfr_scores, lc->cache_shape.n_cached_groups);
     // top-k 그룹에 대한 마스크 생성
+    ggml_tensor * topk_idx   = ggml_argsort_top_k(ctx0, dfr_scores, lc->cache_shape.n_cached_groups);
     ggml_tensor * topk_mask  = ggml_sum_cols(ctx0, ggml_get_rows(ctx0, kairox_cm->group_identity, topk_idx));
 
     ggml_tensor * diff_mask  = ggml_xor(ctx0, lc->group_mask, topk_mask);
