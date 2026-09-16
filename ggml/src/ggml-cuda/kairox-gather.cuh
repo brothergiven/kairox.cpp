@@ -20,3 +20,15 @@ void kairox_gather_reload(char *              weight_base,
                           cudaStream_t        stream,
                           const reload_pair * reload_plan,
                           size_t              reload_count);
+
+
+/**
+ * zero-copy 경로. 시그니처는 kairox_gather_reload 와 같다.
+ * weight_base 가 pinned(디바이스에서 접근 가능) 가 아니면 kairox_gather_reload 로 폴백한다.
+ */
+void kairox_zerocopy_reload(char *              weight_base,
+                            char *              cache_base,
+                            size_t              group_nbytes,
+                            cudaStream_t        stream,
+                            const reload_pair * reload_plan,
+                            size_t              reload_count);

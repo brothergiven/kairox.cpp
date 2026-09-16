@@ -151,3 +151,118 @@ void kairox_gather_reload(char *              weight_base,
         }
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// zero-copy: GPU 스레드가 pinned host 를 직접 읽어 캐시 슬롯에 쓴다.
+//
+// PCIe 읽기는 지연이 길고 동시 요청 수로 대역폭을 채운다. 그래서 그룹마다 스레드 하나(행 스레드)로
+// 짜면 오히려 느리다 — 워드마다 스레드 하나를 깔아 요청을 최대한 겹친다.
+// ---------------------------------------------------------------------------
+template <typename T>
+static __global__ void kairox_zerocopy_kernel(const T * __restrict__ host_base,
+                                              T * __restrict__ cache_base,
+                                              const int * __restrict__ group_idx,
+                                              const int * __restrict__ slot_idx,
+                                              int words_per_group,
+                                              int n_groups) {
+    size_t       tid   = (size_t) blockIdx.x * blockDim.x + threadIdx.x;
+    const size_t total = (size_t) words_per_group * n_groups;
+    const size_t step  = (size_t) gridDim.x * blockDim.x;
+
+    for (; tid < total; tid += step) {
+        const int g = (int) (tid / words_per_group);
+        const int w = (int) (tid % words_per_group);
+        cache_base[(size_t) slot_idx[g] * words_per_group + w] =
+            host_base[(size_t) group_idx[g] * words_per_group + w];
+    }
+}
+
+// weight_base 가 디바이스에서 읽을 수 있는 pinned 메모리인지 확인하고, 디바이스 주소를 돌려준다.
+// 같은 포인터로 매 호출 물어보지 않도록 마지막 결과를 기억한다 (레이어/텐서마다 base 가 다르므로 작은 캐시).
+namespace {
+char * kairox_device_ptr_for_host(char * host_ptr) {
+    static char * last_host = nullptr;
+    static char * last_dev  = nullptr;
+
+    if (host_ptr == last_host) {
+        return last_dev;
+    }
+
+    cudaPointerAttributes attr = {};
+    char *                dev  = nullptr;
+    if (cudaPointerGetAttributes(&attr, host_ptr) == cudaSuccess && attr.type == cudaMemoryTypeHost) {
+        dev = attr.devicePointer ? (char *) attr.devicePointer : host_ptr;   // UVA 면 같은 주소
+    }
+    cudaGetLastError();   // 실패 시 남는 에러 플래그를 지운다
+
+    last_host = host_ptr;
+    last_dev  = dev;
+    return dev;
+}
+}  // namespace
+
+void kairox_zerocopy_reload(char *              weight_base,
+                            char *              cache_base,
+                            size_t              group_nbytes,
+                            cudaStream_t        stream,
+                            const reload_pair * reload_plan,
+                            size_t              reload_count) {
+    if (reload_count == 0) {
+        return;
+    }
+
+    char * host_dev_ptr = kairox_device_ptr_for_host(weight_base);
+    if (host_dev_ptr == nullptr) {
+        // mmap 을 쓰면 pageable 이라 GPU 가 직접 못 읽는다.
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            fprintf(stderr, "KAIROX_ZEROCOPY: 가중치가 pinned 가 아니다 (--no-mmap 확인) — gather 경로로 폴백\n");
+        }
+        kairox_gather_reload(weight_base, cache_base, group_nbytes, stream, reload_plan, reload_count);
+        return;
+    }
+
+    // 인덱스 전달에만 staging 을 쓴다 (가중치는 복사하지 않는다).
+    const size_t chunk = 1024;   // 인덱스 버퍼 크기. 전송 바이트와 무관하다.
+    for (size_t off = 0; off < reload_count; off += chunk) {
+        const size_t n = std::min(chunk, reload_count - off);
+
+        g_stage.ensure(0, (int) n * 2);
+        int * grp_host  = g_stage.slot_host;
+        int * slot_host = g_stage.slot_host + n;
+        int * grp_dev   = g_stage.slot_dev;
+        int * slot_dev  = g_stage.slot_dev + n;
+
+        for (size_t i = 0; i < n; ++i) {
+            grp_host[i]  = reload_plan[off + i].group_idx;
+            slot_host[i] = reload_plan[off + i].slot_idx;
+        }
+        CUDA_CHECK(cudaMemcpyAsync(grp_dev, grp_host, 2 * n * sizeof(int), cudaMemcpyHostToDevice, stream));
+
+        const int threads = 1024;   // 워드 스레드. 256 으로 낮추면 요청이 덜 겹쳐 느려진다.
+        if (group_nbytes % sizeof(uint4) == 0 && (uintptr_t) cache_base % sizeof(uint4) == 0 &&
+            (uintptr_t) host_dev_ptr % sizeof(uint4) == 0) {
+            const int    wpg    = (int) (group_nbytes / sizeof(uint4));
+            const size_t total  = (size_t) wpg * n;
+            const int    blocks = (int) std::min<size_t>(65535, (total + threads - 1) / threads);
+            kairox_zerocopy_kernel<uint4><<<blocks, threads, 0, stream>>>(
+                (const uint4 *) host_dev_ptr, (uint4 *) cache_base, grp_dev, slot_dev, wpg, (int) n);
+        } else {
+            const int    wpg    = (int) group_nbytes;
+            const size_t total  = (size_t) wpg * n;
+            const int    blocks = (int) std::min<size_t>(65535, (total + threads - 1) / threads);
+            kairox_zerocopy_kernel<char><<<blocks, threads, 0, stream>>>(
+                (const char *) host_dev_ptr, (char *) cache_base, grp_dev, slot_dev, wpg, (int) n);
+        }
+        CUDA_CHECK(cudaGetLastError());
+
+        // 인덱스 pinned 버퍼를 다음 청크에서 재사용하므로 완료를 기다린다.
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+
+        if (k_kairox_gather_verify) {
+            kairox_gather_verify_chunk(weight_base, cache_base, group_nbytes, stream, reload_plan + off, n);
+        }
+    }
+}

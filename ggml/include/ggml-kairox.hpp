@@ -73,7 +73,11 @@ const int  k_kairox_gather_budget_mib = get_env_int("KAIROX_GATHER_BUDGET_MIB", 
 // scatter 직후 GPU 캐시 슬롯을 되읽어 원본 가중치와 바이트 비교한다. 매우 느리다 — 정확성 검증 전용.
 // (KAIROX 는 reload 가 compute 와 비동기로 경쟁해 같은 seed 로도 출력이 달라지므로 출력 비교로는 검증 불가)
 const bool k_kairox_gather_verify     = get_env_bool("KAIROX_GATHER_VERIFY", false);
-
+// GPU 가 pinned host 가중치를 직접 읽어 캐시 슬롯에 쓰는 경로 (zero-copy).
+// host staging gather 와 달리 CPU memcpy 와 staging 버퍼가 없다 — 옮기는 PCIe 바이트는 같고,
+// DDR 왕복 한 번과 VRAM 내부 복사 한 번이 사라진다. 대신 PCIe 응답을 기다리는 동안 SM 을 점유한다.
+// --no-mmap 이라 CPU 가중치가 pinned 버퍼에 있어야 동작한다. 아니면 gather 경로로 폴백한다.
+const bool k_kairox_zerocopy = get_env_bool("KAIROX_ZEROCOPY", false);
 /**
  * 캐시 관리 정책을 실제로 수행하는 구조체
  * 각 레이어마다 하나씩 존재하며 , 레이어의 FFN 가중치를 메모리로 로드하고
