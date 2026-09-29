@@ -32,3 +32,22 @@ void kairox_zerocopy_reload(char *              weight_base,
                             cudaStream_t        stream,
                             const reload_pair * reload_plan,
                             size_t              reload_count);
+
+/**
+ * load/evict 마스크를 인덱스 목록으로 압축한다 (KAIROX_GPU_COMPACT).
+ *
+ * 원래는 호스트가 마스크 두 개를 D2H 받아 n_groups 를 전부 훑어 목록을 만들었다. 그 스캔이
+ * O(n_groups) 라 입도를 잘게 할수록 커진다 — g=16 에서 0.09, g=1 에서 1.35 ms/토큰.
+ * 그리고 plan 이 늦어지면 전송이 연산 창을 놓쳐 anchor 에서 막히므로, 호스트 지연이
+ * 9~13 배로 증폭된다(실측). 압축을 GPU 로 옮기면 호스트는 실제 짝 개수만큼만 순회한다.
+ *
+ * 반환 버퍼(pinned host)의 구조:
+ *   [0] = n_load, [1] = n_evict, [2 .. 2+n) = load 인덱스, [2+n .. 2+2n) = evict 인덱스
+ *
+ * atomicAdd 로 모으므로 인덱스 순서는 보장하지 않는다. 예산 절단이 없으면 결과가 같고,
+ * 절단이 있으면 어느 그룹이 잘리는지가 달라진다(원본의 번호 순 편향도 없어진다).
+ */
+const int * kairox_compact_masks(const float * load_mask,
+                                 const float * evict_mask,
+                                 int           n_groups,
+                                 cudaStream_t  stream);

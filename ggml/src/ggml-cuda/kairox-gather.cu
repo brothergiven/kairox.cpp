@@ -266,3 +266,120 @@ void kairox_zerocopy_reload(char *              weight_base,
         }
     }
 }
+// ============================================================================
+// 마스크 → 인덱스 목록 압축 (호스트 스캔 제거)
+// ============================================================================
+
+/**
+ * 압축 결과를 담는 전역 버퍼. 실행기가 하나뿐이고 태스크가 직렬화되므로 하나를 재사용한다.
+ * 레이아웃: [0]=n_load, [1]=n_evict, [2 .. 2+cap)=load, [2+cap .. 2+2*cap)=evict
+ */
+struct kairox_compact_stage {
+    int * dev  = nullptr;  // 디바이스 쪽 버퍼
+    int * host = nullptr;  // pinned 호스트 미러
+    int   cap  = 0;        // n_groups 상한
+
+    void ensure(int n_groups) {
+        if (n_groups <= cap) {
+            return;
+        }
+        if (dev) {
+            CUDA_CHECK(cudaFree(dev));
+        }
+        if (host) {
+            CUDA_CHECK(cudaFreeHost(host));
+        }
+        const size_t n_ints = 2 + 2 * (size_t) n_groups;
+        CUDA_CHECK(cudaMalloc((void **) &dev, n_ints * sizeof(int)));
+        CUDA_CHECK(cudaHostAlloc((void **) &host, n_ints * sizeof(int), cudaHostAllocDefault));
+        cap = n_groups;
+    }
+};
+
+static kairox_compact_stage g_compact;
+
+#define KAIROX_COMPACT_THREADS 1024
+
+/**
+ * 마스크가 1 인 인덱스를 모은다. **번호 오름차순을 보존한다.**
+ *
+ * atomicAdd 로 모으면 순서가 흐트러진다. 그러면 groups_to_load[i] 가
+ * slot_of[groups_to_evict[i]] 로 들어갈 때 짝짓기가 뒤섞여, 인접한 그룹이 인접한 슬롯에
+ * 놓이던 지역성이 깨진다. 실측에서 그것만으로 교체가 63% 늘었다 (load 289 -> 473).
+ *
+ * 스레드 하나가 연속 구간을 담당하고 블록 단위 접두합으로 출력 오프셋을 얻는다.
+ * 결과는 호스트 스캔과 동일하다. 블록 하나, 커널 한 번, 마스크를 두 번 읽는다(둘째는 L2).
+ */
+static __global__ void kairox_compact_kernel(const float * __restrict__ load_mask,
+                                             const float * __restrict__ evict_mask,
+                                             int n_groups,
+                                             int * __restrict__ buf) {
+    __shared__ int s_l[KAIROX_COMPACT_THREADS];
+    __shared__ int s_e[KAIROX_COMPACT_THREADS];
+
+    const int tid   = threadIdx.x;
+    const int nthr  = blockDim.x;
+    const int chunk = (n_groups + nthr - 1) / nthr;
+    const int beg   = tid * chunk;
+    const int end   = min(beg + chunk, n_groups);
+
+    // 1 패스: 자기 구간의 개수를 센다
+    int cl = 0;
+    int ce = 0;
+    for (int i = beg; i < end; ++i) {
+        cl += (load_mask[i] != 0.0f);
+        ce += (evict_mask[i] != 0.0f);
+    }
+    s_l[tid] = cl;
+    s_e[tid] = ce;
+    __syncthreads();
+
+    // 2 패스: 블록 단위 포함 접두합 (Hillis-Steele). nthr 은 2 의 거듭제곱이어야 한다.
+    for (int off = 1; off < nthr; off <<= 1) {
+        const int add_l = (tid >= off) ? s_l[tid - off] : 0;
+        const int add_e = (tid >= off) ? s_e[tid - off] : 0;
+        __syncthreads();
+        s_l[tid] += add_l;
+        s_e[tid] += add_e;
+        __syncthreads();
+    }
+
+    // 포함합에서 자기 개수를 빼면 배타적 오프셋이다
+    int pl = s_l[tid] - cl;
+    int pe = s_e[tid] - ce;
+
+    if (tid == nthr - 1) {
+        buf[0] = s_l[tid];
+        buf[1] = s_e[tid];
+    }
+
+    // 3 패스: 오프셋부터 번호 순으로 쓴다
+    for (int i = beg; i < end; ++i) {
+        if (load_mask[i] != 0.0f) {
+            buf[2 + pl++] = i;
+        }
+        if (evict_mask[i] != 0.0f) {
+            buf[2 + n_groups + pe++] = i;
+        }
+    }
+}
+
+const int * kairox_compact_masks(const float * load_mask,
+                                 const float * evict_mask,
+                                 int           n_groups,
+                                 cudaStream_t  stream) {
+    g_compact.ensure(n_groups);
+
+    // 커널이 카운터를 직접 쓰므로 memset 이 필요 없다. 접두합을 쓰려면 블록 하나여야 한다.
+    kairox_compact_kernel<<<1, KAIROX_COMPACT_THREADS, 0, stream>>>(load_mask, evict_mask, n_groups,
+                                                                    g_compact.dev);
+    CUDA_CHECK(cudaGetLastError());
+
+    // 카운터와 인덱스를 한 번에 내린다. 볼륨은 기존 마스크 두 개와 같은 차수라 문제되지 않는다 —
+    // 없애려는 것은 전송량이 아니라 호스트의 O(n_groups) 순회다.
+    CUDA_CHECK(cudaMemcpyAsync(g_compact.host, g_compact.dev, (2 + 2 * (size_t) n_groups) * sizeof(int),
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    return g_compact.host;
+}

@@ -6,6 +6,7 @@
 #include "llama-model.h"
 
 #include <string>
+#include <chrono>
 #include <cstdio>
 #include <memory>
 #include <numeric>
@@ -42,7 +43,8 @@ ggml_tensor * kairox_layer_cache::build_reload_exec(ggml_context * ctx0, ggml_te
 
 // Reload 전략을 수행한다. 이 때 가중치는 직접 옮기는게 아니라 메타 정보만을 옮김
 // 매 토큰 생성 시, 매 레이어마다 reload plan을 작성한다
-void kairox_layer_cache::kairox_reload_plan() {
+void kairox_layer_cache::kairox_reload_plan(const int * load_list, int n_load_in,
+                                           const int * evict_list, int n_evict_in) {
     float *   load_group_mask_data   = (float *) load_group_host->data;  // load 할 그룹의 mask 데이터, type: F32, 인덱스는 group 번호, 값은 0.0f 또는 1.0f
     float *   evict_group_mask_data  = (float *) evict_group_host->data; // evict 할 그룹의 mask 데이터
     float *   actual_group_mask_data = (float *) group_mask_host->data;  // 현재 GPU에 올라가있는 Group의 mask 데이터
@@ -54,21 +56,43 @@ void kairox_layer_cache::kairox_reload_plan() {
     int       n_groups_to_load       = 0;
     int       n_groups_to_evict      = 0;
 
-    // 이미 load, evict 할 그룹은 결정된 상태에서 plan만을 작성한다
-    for (int group = 0; group < n_groups; ++group) {
-        if (load_group_mask_data[group]) {
-            groups_to_load[n_groups_to_load++] = group;
-        }
-        if (evict_group_mask_data[group]) {
-            // groups_to_evict: layer_cache 구조체 내에 있는 std::vector, 인덱스에 해당하는 그룹을 evict할 예정임을 나타냄
-            groups_to_evict[n_groups_to_evict++] = group;
+    // 이미 load, evict 할 그룹은 결정된 상태에서 plan만을 작성한다.
+    // 목록은 여기서 만든 순서대로 예산에 잘리므로, 스캔 순서가 곧 우선순위다.
+    // KAIROX_RELOAD_ROTATE=1 이면 시작점을 매 스텝 돌려 낮은 번호 편향을 없앤다.
+    const auto t_scan0 = k_kairox_profile_plan ? std::chrono::steady_clock::now()
+                                               : std::chrono::steady_clock::time_point{};
+    if (load_list) {
+        // GPU 압축 경로: 목록이 이미 와 있으므로 O(n_groups) 순회가 없다.
+        // 벡터를 재사용하는 이유는 아래 적용 루프가 groups_to_* 를 읽기 때문이다.
+        n_groups_to_load  = std::min(n_load_in, n_groups);
+        n_groups_to_evict = std::min(n_evict_in, n_groups);
+        std::copy_n(load_list, n_groups_to_load, groups_to_load.begin());
+        std::copy_n(evict_list, n_groups_to_evict, groups_to_evict.begin());
+    } else {
+        const int scan_off = k_kairox_reload_rotate ? (int) (reload_scan_cursor++ % (uint64_t) n_groups) : 0;
+        for (int i = 0; i < n_groups; ++i) {
+            const int group = scan_off ? (scan_off + i) % n_groups : i;
+            if (load_group_mask_data[group]) {
+                groups_to_load[n_groups_to_load++] = group;
+            }
+            if (evict_group_mask_data[group]) {
+                // groups_to_evict: layer_cache 구조체 내에 있는 std::vector, 인덱스에 해당하는 그룹을 evict할 예정임을 나타냄
+                groups_to_evict[n_groups_to_evict++] = group;
+            }
         }
     }
+    const auto t_scan1 = k_kairox_profile_plan ? std::chrono::steady_clock::now()
+                                               : std::chrono::steady_clock::time_point{};
+
     reload_count = 0;
-    GGML_ASSERT(n_groups_to_load == n_groups_to_evict); // 로드할 그룹과 evict할 그룹의 개수가 동일해야 함
+    // top-k 는 |S| = K 를 보장하므로 load 와 evict 개수가 항상 같다. 임계값 선택(KAIROX_NOSORT)은
+    // 그 보장이 없어 둘이 어긋난다 — 그때는 비워진 슬롯 수만큼만 교체한다.
+    if (!k_kairox_nosort) {
+        GGML_ASSERT(n_groups_to_load == n_groups_to_evict); // 로드할 그룹과 evict할 그룹의 개수가 동일해야 함
+    }
     reload_planned_count        = n_groups_to_load;
     const int reload_budget     = planned_budget; // reload_budget_groups() : 캐시 대비 비율에 따라 reload할 그룹의 개수를 결정
-    const int n_pairs_to_reload = std::min(n_groups_to_load, reload_budget); // 로드할 그룹과 evict할 그룹의 개수 중 작은 값을 선택하여 reload할 그룹의 개수를 결정
+    const int n_pairs_to_reload = std::min({ n_groups_to_load, n_groups_to_evict, reload_budget });
 
     for (int i = 0; i < n_pairs_to_reload; ++i) { // 로드할 그룹과 evict할 그룹의 개수만큼 반복
         const int group_to_evict = groups_to_evict[i]; // load, evict 시작
@@ -116,6 +140,26 @@ void kairox_layer_cache::kairox_reload_plan() {
         reload_plan[reload_count].group_idx = group_to_load;
         reload_plan[reload_count].slot_idx  = slot;
         ++reload_count;
+    }
+
+    // 임계 경로 검증용 지연. 호스트 작업을 늘려 처리량이 그만큼 떨어지는지 본다.
+    if (k_kairox_plan_delay_us > 0) {
+        const auto t_spin = std::chrono::steady_clock::now();
+        const auto want   = std::chrono::microseconds(k_kairox_plan_delay_us);
+        while (std::chrono::steady_clock::now() - t_spin < want) {
+            // busy wait: sleep 은 스케줄러 지연이 섞여 정밀도가 떨어진다
+        }
+    }
+
+    if (k_kairox_profile_plan) {
+        const auto t_apply1 = std::chrono::steady_clock::now();
+        dbg_plan_scan_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t_scan1 - t_scan0).count();
+        dbg_plan_apply_ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t_apply1 - t_scan1).count();
+        dbg_plan_pairs += (uint64_t) n_pairs_to_reload;
+        // |S| 를 알면 임계값이 K 를 맞추고 있는지 볼 수 있다. 캐시가 가득이면 |S| = K + load - evict.
+        dbg_plan_load += (uint64_t) n_groups_to_load;
+        dbg_plan_evict += (uint64_t) n_groups_to_evict;
+        ++dbg_plan_calls;
     }
 }
 
@@ -249,7 +293,11 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
         lc->reload_plan.resize(lc->cache_shape.n_cached_neurons);
         lc->groups_to_load.resize(lc->cache_shape.n_groups);
         lc->groups_to_evict.resize(lc->cache_shape.n_groups);
-        lc->dfr_swap_budget.store(1.0f);
+        // 되먹임이 켜져 있으면 여기서 시작해 스텝마다 조정되고, 꺼져 있으면 이 값이 고정 상한으로 쓰인다.
+        lc->dfr_swap_budget.store(std::clamp(k_kairox_swap_budget_init, k_kairox_swap_budget_min, 1.0f));
+        // tau_load 는 lambda 에서 유도된다(Algorithm 1 line 8). ANB 가 켜지면 스텝마다 갱신되고,
+        // 꺼져 있으면 0 (= 필터 없음) 또는 KAIROX_TAU_LOAD 로 고정된 값이 그대로 쓰인다.
+        lc->dfr_neg_tau = -kairox_tau_load(k_kairox_lambda_init);
         lc->gpu_only = (lc->cache_shape.n_cached_neurons == lc->cache_shape.n_neurons);
 
         // 계측 플래그 on일 때
@@ -486,9 +534,78 @@ static void kairox_dump_activation_csv(const std::vector<kairox_layer_cache *>  
 
 
 
+// ANB 의 lambda 궤적을 CSV 로 남긴다 (논문 Figure 11 대응). KAIROX_ANB_TRACE=1 일 때만.
+static void kairox_dump_anb_trace(const std::vector<kairox_layer_cache *> & layer_caches) {
+    const char *      path_env = getenv("KAIROX_ANB_TRACE_PATH");
+    const std::string path     = path_env ? path_env : "kairox_anb_trace.csv";
+
+    FILE * f = fopen(path.c_str(), "w");
+    if (!f) {
+        LLAMA_LOG_WARN("%s: failed to open '%s'\n", __func__, path.c_str());
+        return;
+    }
+    fprintf(f, "layer,step,lambda,io_bound\n");
+    for (size_t il = 0; il < layer_caches.size(); ++il) {
+        const auto * lc = layer_caches[il];
+        for (size_t t = 0; t < lc->dbg_anb_lambda.size(); ++t) {
+            fprintf(f, "%zu,%zu,%.6f,%d\n", il, t, lc->dbg_anb_lambda[t], (int) lc->dbg_anb_io_bound[t]);
+        }
+    }
+    fclose(f);
+    LLAMA_LOG_INFO("%s: wrote ANB trace to '%s'\n", __func__, path.c_str());
+}
+
+// RELOAD_PLAN 호스트 구간의 비용을 요약한다 (KAIROX_PROFILE_PLAN).
+// 스캔은 O(n_groups) 라 입도를 잘게 하면 커지고, 적용은 O(pairs x group_size) 라 입도와 무관하다.
+// 둘 중 어느 쪽이 g=1 의 고정비인지 가르는 것이 목적이다.
+static void kairox_dump_plan_profile(const std::vector<kairox_layer_cache *> & layer_caches) {
+    uint64_t calls = 0, scan_ns = 0, apply_ns = 0, pairs = 0, n_load = 0, n_evict = 0, cap_sum = 0;
+    int      n_groups = 0;
+    for (const auto * lc : layer_caches) {
+        calls += lc->dbg_plan_calls;
+        scan_ns += lc->dbg_plan_scan_ns;
+        apply_ns += lc->dbg_plan_apply_ns;
+        pairs += lc->dbg_plan_pairs;
+        n_load += lc->dbg_plan_load;
+        n_evict += lc->dbg_plan_evict;
+        cap_sum += (uint64_t) lc->cache_shape.n_cached_groups * lc->dbg_plan_calls;
+        n_groups = lc->cache_shape.n_groups;
+    }
+    if (calls == 0) {
+        LLAMA_LOG_INFO("%s: RELOAD_PLAN 호출 0 — KAIROX_PARALLEL 확인\n", __func__);
+        return;
+    }
+    // 레이어 수로 나누면 "토큰 하나를 만드는 동안" 쓴 시간이 된다.
+    const uint64_t n_layers = layer_caches.size();
+    const uint64_t steps    = n_layers ? calls / n_layers : calls;
+
+    LLAMA_LOG_INFO("%s: === RELOAD_PLAN 호스트 프로파일 (n_groups=%d) ===\n", __func__, n_groups);
+    LLAMA_LOG_INFO("%s:   호출        : %llu (%llu 스텝 x %llu 레이어)\n", __func__,
+                   (unsigned long long) calls, (unsigned long long) steps, (unsigned long long) n_layers);
+    LLAMA_LOG_INFO("%s:   스캔        : %8.3f ms/토큰   (%6.1f ns/호출, %5.2f ns/그룹)\n", __func__,
+                   steps ? scan_ns / 1e6 / steps : 0.0, (double) scan_ns / calls,
+                   n_groups ? (double) scan_ns / calls / n_groups : 0.0);
+    LLAMA_LOG_INFO("%s:   적용        : %8.3f ms/토큰   (%6.1f ns/호출, 짝 %5.1f 개/호출)\n", __func__,
+                   steps ? apply_ns / 1e6 / steps : 0.0, (double) apply_ns / calls, (double) pairs / calls);
+    LLAMA_LOG_INFO("%s:   합계        : %8.3f ms/토큰\n", __func__,
+                   steps ? (scan_ns + apply_ns) / 1e6 / steps : 0.0);
+    // |S| = K + load - evict (캐시가 가득일 때). K 대비 비율이 1.0 에서 멀면 임계값이 안 맞는 것이다.
+    const double avg_cap = calls ? (double) cap_sum / calls : 0.0;
+    const double avg_sel = avg_cap + (double) n_load / calls - (double) n_evict / calls;
+    LLAMA_LOG_INFO("%s:   선택 |S|    : %8.1f / K %6.1f  (%5.3f 배)   load %5.1f  evict %5.1f  실행 %5.1f\n",
+                   __func__, avg_sel, avg_cap, avg_cap > 0 ? avg_sel / avg_cap : 0.0,
+                   (double) n_load / calls, (double) n_evict / calls, (double) pairs / calls);
+}
+
 kairox_cache_manager::~kairox_cache_manager() {
     if (k_kairox_dump_activation) {
         kairox_dump_activation_csv(layer_caches);
+    }
+    if (k_kairox_anb_trace) {
+        kairox_dump_anb_trace(layer_caches);
+    }
+    if (k_kairox_profile_plan) {
+        kairox_dump_plan_profile(layer_caches);
     }
     for (auto * const lc : layer_caches) {
         delete lc;

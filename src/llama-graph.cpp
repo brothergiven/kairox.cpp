@@ -1324,21 +1324,36 @@ void llm_graph_context::build_sparse_ffn_dfr(kairox_layer_cache * lc,
     /**
      * 지금의 tau 필터링은 그룹 단위로 수행되고 있다. 이걸 사실 뉴런 단위로 해야하는 것 아닌가? 
      */
-    // const float tau = (1.0f - *(float *) lc->dfr_ema_coeffs->data) + 1e-6f;
-    // mask 값이 0이면 topk에 포함되지 않도록
-    // ggml_tensor * threshold_mask = ggml_shifted_step(ctx0, dfr_scores, -tau, false);
-    // ggml_tensor * filtered_dfr_scores = ggml_mul(ctx0, dfr_scores, threshold_mask);
+    /**
+     * tau_load 는 lambda 에서 유도되는데(Algorithm 1 line 8), ANB 가 켜지면 lambda 가 스텝마다 바뀐다.
+     * 그래프는 디코드 중 재사용되므로 빌드 시점 값을 op_params 에 구우면 첫 스텝 값에 고정된다.
+     * lc->dfr_neg_tau 를 가리키게 해서 커널이 매 실행마다 최신 -tau 를 읽도록 한다.
+     *
+     * ANB 를 끄고 KAIROX_TAU_LOAD 도 주지 않으면 dfr_neg_tau = 0 이라 step(score) 가 되고,
+     * 점수가 0 인 그룹만 걸러지므로 필터가 없는 것과 같은 결과가 된다.
+     */
+    ggml_tensor * threshold_mask      = ggml_shifted_step_dyn(ctx0, dfr_scores, &lc->dfr_neg_tau, false);
+    ggml_tensor * filtered_dfr_scores = ggml_mul(ctx0, dfr_scores, threshold_mask);
 
     // 계산된 DFR 점수에 따라 top-k 그룹을 선택. argsort() API 사용 !
     // 이 때 k 값은 VRAM capacity이다, 즉 존재하는 그룹들 중 DFR Score에 따라 top k 그룹들이 VRAM으로 load 되는 것
-    // ggml_tensor * topk_idx   = ggml_argsort_top_k(ctx0, filtered_dfr_scores, lc->cache_shape.n_cached_groups);
-    // top-k 그룹에 대한 마스크 생성
-    ggml_tensor * topk_idx   = ggml_argsort_top_k(ctx0, dfr_scores, lc->cache_shape.n_cached_groups);
-    // ggml_tensor * topk_mask  = ggml_sum_cols(ctx0, ggml_get_rows(ctx0, kairox_cm->group_identity, topk_idx));
-    // top-k 그룹에 대한 마스크 생성.
-    // 원래는 n_group x n_group 항등행렬에서 get_rows + sum_cols 로 만들었는데, 그 행렬이
-    // O(n_group^2) F32 라 group_size 를 낮출수록 VRAM 을 먹었다. ggml_index_mask 는 O(n_group) 이다.
-    ggml_tensor * topk_mask  = ggml_index_mask(ctx0, topk_idx, lc->cache_shape.n_groups);
+    ggml_tensor * topk_mask = nullptr;
+    if (k_kairox_nosort) {
+        /**
+         * 절제 경로 (KAIROX_NOSORT). topk_idx 는 index_mask 를 거쳐 0/1 마스크가 되고
+         * 순서는 버려진다 — 즉 원래 필요한 것은 정렬이 아니라 "점수가 임계값을 넘는가" 뿐이다.
+         * 정렬 O(n log n) + gather 를 원소별 비교 O(n) 하나로 대체해 그 비용을 잰다.
+         * |S| 를 K 에 맞추는 제어가 없으므로 정책 품질은 보장하지 않는다. 임계값은 KAIROX_TAU_LOAD.
+         */
+        topk_mask = ggml_shifted_step_dyn(ctx0, dfr_scores, &lc->dfr_neg_tau, false);
+    } else {
+        ggml_tensor * topk_idx = ggml_argsort_top_k(ctx0, filtered_dfr_scores, lc->cache_shape.n_cached_groups);
+        // ggml_tensor * topk_mask  = ggml_sum_cols(ctx0, ggml_get_rows(ctx0, kairox_cm->group_identity, topk_idx));
+        // top-k 그룹에 대한 마스크 생성.
+        // 원래는 n_group x n_group 항등행렬에서 get_rows + sum_cols 로 만들었는데, 그 행렬이
+        // O(n_group^2) F32 라 group_size 를 낮출수록 VRAM 을 먹었다. ggml_index_mask 는 O(n_group) 이다.
+        topk_mask = ggml_index_mask(ctx0, topk_idx, lc->cache_shape.n_groups);
+    }
     ggml_tensor * diff_mask  = ggml_xor(ctx0, lc->group_mask, topk_mask);
 
     // load group tensor 완성

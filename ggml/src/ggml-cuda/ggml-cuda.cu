@@ -2616,13 +2616,23 @@ static void ggml_cuda_reload_plan(ggml_backend_cuda_context & ctx, ggml_tensor *
 
     kairox_lc->planned_budget = kairox_lc->reload_budget_groups();
 
-    CUDA_CHECK(cudaMemcpyAsync((float *) kairox_lc->load_group_host->data, (const float *) dst->src[0]->data,
-                               sizeof(float) * kairox_lc->cache_shape.n_groups, cudaMemcpyDeviceToHost, ctx.stream()));
-    CUDA_CHECK(cudaMemcpyAsync((float *) kairox_lc->evict_group_host->data, (const float *) dst->src[1]->data,
-                               sizeof(float) * kairox_lc->cache_shape.n_groups, cudaMemcpyDeviceToHost, ctx.stream()));
-    CUDA_CHECK(cudaStreamSynchronize(ctx.stream()));
+    if (k_kairox_gpu_compact) {
+        // GPU 가 마스크를 인덱스 목록으로 압축해 내려준다. 호스트의 O(n_groups) 스캔이 사라진다.
+        const int   n_groups = kairox_lc->cache_shape.n_groups;
+        const int * c = kairox_compact_masks((const float *) dst->src[0]->data, (const float *) dst->src[1]->data,
+                                             n_groups, ctx.stream());
+        kairox_lc->kairox_reload_plan(c + 2, c[0], c + 2 + n_groups, c[1]);
+    } else {
+        CUDA_CHECK(cudaMemcpyAsync((float *) kairox_lc->load_group_host->data, (const float *) dst->src[0]->data,
+                                   sizeof(float) * kairox_lc->cache_shape.n_groups, cudaMemcpyDeviceToHost,
+                                   ctx.stream()));
+        CUDA_CHECK(cudaMemcpyAsync((float *) kairox_lc->evict_group_host->data, (const float *) dst->src[1]->data,
+                                   sizeof(float) * kairox_lc->cache_shape.n_groups, cudaMemcpyDeviceToHost,
+                                   ctx.stream()));
+        CUDA_CHECK(cudaStreamSynchronize(ctx.stream()));
 
-    kairox_lc->kairox_reload_plan();
+        kairox_lc->kairox_reload_plan();
+    }
 
     // 계측: predictor 출력(sparse_idx)을 호스트로 한 번만 내려받아 두 집계 함수가 공유한다.
     // 반드시 k_kairox_dump_activation 가드 안에 둘 것 — 밖에 두면 계측을 꺼도 매 레이어마다
@@ -2639,7 +2649,9 @@ static void ggml_cuda_reload_plan(ggml_backend_cuda_context & ctx, ggml_tensor *
         kairox_dump_residency_counts(kairox_lc, dbg_ntok, dbg_sparse_idx_host);
     }
 
-    if (kairox_lc->reload_count < kairox_lc->reload_planned_count) {
+    // 계획보다 적게 옮겼으면 디바이스 마스크가 거짓이 되므로 실제 마스크로 되돌린다.
+    // 임계값 선택(KAIROX_NOSORT)은 load/evict 개수가 어긋나므로 항상 되돌려야 한다.
+    if (kairox_lc->reload_count < kairox_lc->reload_planned_count || k_kairox_nosort) {
         CUDA_CHECK(cudaMemcpyAsync((float *) kairox_lc->group_mask->data, (float *) kairox_lc->group_mask_host->data,
                                    sizeof(float) * kairox_lc->cache_shape.n_groups, cudaMemcpyHostToDevice,
                                    ctx.stream()));
@@ -2724,8 +2736,7 @@ static void ggml_cuda_reload_exec(ggml_backend_cuda_context & ctx, ggml_tensor *
     if (kairox_wt == KAIROX_FFN_UP) {
         kairox_executor->make_anchor(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_MUL_MAT_SPARSE);
     } else if (kairox_wt == KAIROX_FFN_DOWN) {
-        kairox_executor->make_anchor(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_AXPY_SPARSE,
-                                   &kairox_lc->dfr_swap_budget);
+        kairox_executor->make_anchor(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_AXPY_SPARSE, kairox_lc);
     }
     GGML_UNUSED(ctx);
 }
@@ -3575,7 +3586,8 @@ static bool ggml_cuda_try_kairox_dfr_fusion(ggml_backend_cuda_context & cuda_ctx
         return is_cuda_contiguous(t, type) && t->ne[1] == 1 && t->ne[2] == 1 && t->ne[3] == 1;
     };
 
-    if (cgraph->nodes[i]->op == GGML_OP_SHIFTED_STEP) {
+    // dyn threshold(= tau_load) 를 쓰는 shifted_step 은 DFR update 체인의 머리가 아니다. 융합 대상에서 제외한다.
+    if (cgraph->nodes[i]->op == GGML_OP_SHIFTED_STEP && cgraph->nodes[i]->op_params[1] == 0) {
         int j = i;
         ggml_tensor * shifted = cgraph->nodes[j];
         ggml_tensor * cur = shifted;
