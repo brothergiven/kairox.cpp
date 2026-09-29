@@ -151,3 +151,7 @@ e2e_gather
 hit_g1_vs_g16
 batch_e2e
 SPIF-GGUF
+
+# 계측 산출물 (activation CSV, nsys 프로파일)
+dumps/
+prof/

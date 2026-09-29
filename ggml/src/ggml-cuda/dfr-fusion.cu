@@ -3,11 +3,11 @@
 constexpr int kairox_dfr_warps_per_block = 4;
 constexpr int kairox_dfr_mask_threads    = 256;
 // constexpr int kairox_dfr_mask_words      = 1024 / 32;
-// 결정 단위(group_size) 스윕을 위해 상한을 1024 -> 16384 그룹으로 넓혔다.
+// 결정 단위(group_size) 스윕을 위해 상한을 1024 -> 16384 -> 32768 그룹으로 넓혔다.
 // 이 값은 kairox_dfr_mask_f32_kernel 의 공유 메모리 비트마스크 크기를 결정하며,
-// 비용은 그룹당 1비트뿐이다 — 16384 그룹이라도 2 KiB 로, 블록당 48 KiB 한도에 한참 못 미친다.
-// n_ff=11008 기준 group_size=1 (11008 그룹) 까지 커버한다.
-constexpr int kairox_dfr_max_groups      = 16384;
+// 비용은 그룹당 1비트뿐이다 — 32768 그룹이라도 4 KiB 로, 블록당 48 KiB 한도에 한참 못 미친다.
+// AE 모델 중 n_ff 가 가장 큰 opt-30b(28672) 의 group_size=1 까지 커버한다.
+constexpr int kairox_dfr_max_groups      = 32768;
 constexpr int kairox_dfr_mask_words      = kairox_dfr_max_groups / 32;
 
 
