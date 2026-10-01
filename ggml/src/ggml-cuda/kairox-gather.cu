@@ -202,6 +202,75 @@ char * kairox_device_ptr_for_host(char * host_ptr) {
 }
 }  // namespace
 
+/**
+ * cudaMemcpyBatchAsync 경로.
+ *
+ * naive 는 그룹마다 cudaMemcpyAsync 를 부르고 window 마다 동기화한다 — g=1 이면 호출이
+ * 16 배가 되어 전송 자체보다 발사 비용이 커진다(실측 25% 손해). gather 는 호출을 1 회로
+ * 줄이지만 CPU 가 전송량 전체를 staging 으로 복사한다. zerocopy 는 CPU 복사도 없애지만
+ * 커널이 SM 을 점유하는데, g=1 에서는 GPU 가 이미 87% 차 있어 그게 비싸다.
+ *
+ * 이 경로는 주소 배열 셋만 만들어 한 번에 제출한다. 데이터는 흩어진 채로 복사 엔진이
+ * 옮기므로 CPU 복사도 SM 점유도 없다 (nsys 에서 커널이 잡히지 않음을 확인).
+ *
+ * 실행기가 단일 스레드이므로 주소 배열은 전역 하나를 재사용한다.
+ */
+void kairox_memcpy_batch_reload(char *              weight_base,
+                                char *              cache_base,
+                                size_t              group_nbytes,
+                                cudaStream_t        stream,
+                                const reload_pair * reload_plan,
+                                size_t              reload_count) {
+    if (reload_count == 0) {
+        return;
+    }
+
+#if defined(CUDART_VERSION) && CUDART_VERSION >= 12080
+    static std::vector<void *>       dsts;
+    static std::vector<const void *> srcs;
+    static std::vector<size_t>       sizes;
+
+    dsts.resize(reload_count);
+    srcs.resize(reload_count);
+    sizes.resize(reload_count);
+
+    for (size_t i = 0; i < reload_count; ++i) {
+        const reload_pair & p = reload_plan[i];
+        dsts[i]  = cache_base  + (size_t) p.slot_idx  * group_nbytes;
+        srcs[i]  = weight_base + (size_t) p.group_idx * group_nbytes;
+        sizes[i] = group_nbytes;
+    }
+
+    // 배치 전체가 스트림 순서로 실행된다. 배치 안의 복사끼리는 순서 보장이 없는데,
+    // 슬롯이 서로 달라 의존성이 없으므로 무관하다.
+    cudaMemcpyAttributes attr = {};
+    attr.srcAccessOrder = cudaMemcpySrcAccessOrderStream;
+    attr.flags          = cudaMemcpyFlagPreferOverlapWithCompute;
+    size_t attr_idx     = 0;
+
+    const cudaError_t err = cudaMemcpyBatchAsync(dsts.data(), srcs.data(), sizes.data(),
+                                                 reload_count, &attr, &attr_idx, 1, stream);
+    if (err != cudaSuccess) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            fprintf(stderr, "KAIROX_MEMCPY_BATCH: cudaMemcpyBatchAsync 실패 (%s) — zerocopy 로 폴백\n",
+                    cudaGetErrorString(err));
+        }
+        kairox_zerocopy_reload(weight_base, cache_base, group_nbytes, stream, reload_plan, reload_count);
+        return;
+    }
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+#else
+    static bool warned = false;
+    if (!warned) {
+        warned = true;
+        fprintf(stderr, "KAIROX_MEMCPY_BATCH: CUDA 12.8 미만으로 빌드됨 — zerocopy 로 폴백\n");
+    }
+    kairox_zerocopy_reload(weight_base, cache_base, group_nbytes, stream, reload_plan, reload_count);
+#endif
+}
+
 void kairox_zerocopy_reload(char *              weight_base,
                             char *              cache_base,
                             size_t              group_nbytes,

@@ -34,6 +34,18 @@ void kairox_zerocopy_reload(char *              weight_base,
                             size_t              reload_count);
 
 /**
+ * cudaMemcpyBatchAsync 경로 (KAIROX_MEMCPY_BATCH). 시그니처는 위 둘과 같다.
+ * 주소 배열 셋만 만들어 API 1 회로 제출한다 — CPU 복사 없음, 커널 없음.
+ * CUDA 12.8 미만으로 빌드했거나 가중치가 pinned 가 아니면 zerocopy 로 폴백한다.
+ */
+void kairox_memcpy_batch_reload(char *              weight_base,
+                                char *              cache_base,
+                                size_t              group_nbytes,
+                                cudaStream_t        stream,
+                                const reload_pair * reload_plan,
+                                size_t              reload_count);
+
+/**
  * load/evict 마스크를 인덱스 목록으로 압축한다 (KAIROX_GPU_COMPACT).
  *
  * 원래는 호스트가 마스크 두 개를 D2H 받아 n_groups 를 전부 훑어 목록을 만들었다. 그 스캔이

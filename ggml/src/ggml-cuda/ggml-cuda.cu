@@ -2716,7 +2716,11 @@ static void ggml_cuda_reload_exec(ggml_backend_cuda_context & ctx, ggml_tensor *
 
     auto * kairox_extra    = (kairox_tensor_extra *) dst->extra;
     auto * kairox_executor = (SingleThreadExecutor *) kairox_extra->kairox_executor;
-    if (k_kairox_zerocopy) {
+    if (k_kairox_memcpy_batch) {
+        // 흩어진 복사 n 개를 API 1 회로. CPU 복사 없음, 커널 없음 (복사 엔진이 처리).
+        kairox_executor->post(kairox_memcpy_batch_reload, weight_base, cache_base, group_nbytes, cudaStreamPerThread,
+                              (const reload_pair *) kairox_lc->reload_plan.data(), kairox_lc->reload_count);
+    } else if (k_kairox_zerocopy) {
         // GPU 가 pinned host 에서 직접 읽는다. 호스트 memcpy 와 staging 이 없다.
         kairox_executor->post(kairox_zerocopy_reload, weight_base, cache_base, group_nbytes, cudaStreamPerThread,
                               (const reload_pair *) kairox_lc->reload_plan.data(), kairox_lc->reload_count);

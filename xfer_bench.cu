@@ -55,7 +55,9 @@ int main(int argc, char** argv) {
     std::mt19937 rng(42);
 
     printf("row_bytes=%d g=%d  그룹당 %.1f KiB\n", row_bytes, rows_per_group, gnb/1024.0);
-    printf("%8s %10s %12s %12s %12s %9s %9s\n", "groups", "MiB", "C base(us)", "A host(us)", "B zc(us)", "A/C", "B/C");
+    printf("%8s %10s %12s %12s %12s %12s %8s %8s %8s\n", "groups", "MiB",
+           "C base(us)", "A host(us)", "B zc(us)", "D batch(us)", "A/C", "B/C", "D/C");
+    std::vector<void*> bd(1024); std::vector<const void*> bs(1024); std::vector<size_t> bz(1024);
     for (int ng : {4, 8, 16, 32, 64, 128, 256, 512, 1024}) {
         std::vector<int> gs(n_total_groups), ss(n_cache_slots);
         for (int i=0;i<n_total_groups;i++) gs[i]=i; for (int i=0;i<n_cache_slots;i++) ss[i]=i;
@@ -95,8 +97,29 @@ int main(int argc, char** argv) {
             CK(cudaStreamSynchronize(st));
         }
         CK(cudaEventRecord(e1,st)); CK(cudaEventSynchronize(e1)); CK(cudaEventElapsedTime(&tb,e0,e1));
-        printf("%8d %10.2f %12.1f %12.1f %12.1f %8.2fx %8.2fx\n", ng, mib,
-               tc*1000/REP, ta*1000/REP, tb*1000/REP, tc/ta, tc/tb);
+
+        float td=0;                               // D: cudaMemcpyBatchAsync
+#if CUDART_VERSION >= 12080
+        {
+            cudaMemcpyAttributes attr{}; size_t idx0 = 0;
+            attr.srcAccessOrder = cudaMemcpySrcAccessOrderStream;
+            attr.flags          = cudaMemcpyFlagPreferOverlapWithCompute;
+            for (int r=0;r<REP+3;r++) {
+                if (r==3) CK(cudaEventRecord(e0,st));
+                for (int i=0;i<ng;i++) {          // 주소 목록만 만든다 (데이터 복사 없음)
+                    bd[i] = cache_d  + (size_t)slot_h[i]*gnb;
+                    bs[i] = weights  + (size_t)grp_h[i]*gnb;
+                    bz[i] = gnb;
+                }
+                CK(cudaMemcpyBatchAsync(bd.data(), bs.data(), bz.data(), ng, &attr, &idx0, 1, st));
+                CK(cudaStreamSynchronize(st));
+            }
+            CK(cudaEventRecord(e1,st)); CK(cudaEventSynchronize(e1)); CK(cudaEventElapsedTime(&td,e0,e1));
+        }
+#endif
+        printf("%8d %10.2f %12.1f %12.1f %12.1f %12.1f %7.2fx %7.2fx %7.2fx\n", ng, mib,
+               tc*1000/REP, ta*1000/REP, tb*1000/REP, td*1000/REP,
+               tc/ta, tc/tb, td>0 ? tc/td : 0.0f);
     }
     return 0;
 }

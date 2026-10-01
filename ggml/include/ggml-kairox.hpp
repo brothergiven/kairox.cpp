@@ -118,6 +118,14 @@ const bool k_kairox_gather_verify     = get_env_bool("KAIROX_GATHER_VERIFY", fal
 const bool k_kairox_zerocopy = get_env_bool("KAIROX_ZEROCOPY", false);
 
 /**
+ * cudaMemcpyBatchAsync (CUDA 12.8+) 경로. 흩어진 복사 n 개를 API 호출 1 회로 제출한다.
+ * gather 처럼 데이터를 모으지 않고 "명령"만 모으므로 CPU 복사가 없고, zerocopy 와 달리
+ * 커널을 띄우지 않아 SM 을 점유하지 않는다 (복사 엔진이 처리한다).
+ * g=1 에서 naive 는 호출이 16 배가 되고 zerocopy 는 SM 을 먹는데, 이 경로는 둘 다 피한다.
+ */
+const bool k_kairox_memcpy_batch = get_env_bool("KAIROX_MEMCPY_BATCH", false);
+
+/**
  * Adaptive Neuron Balancer (논문 Algorithm 1 Phase 1) 설정.
  *
  * KAIROX_ANB=1 이면 병목 피드백이 lambda 를 조절한다(논문 동작). tau_load 도 lambda 를 따라간다.
