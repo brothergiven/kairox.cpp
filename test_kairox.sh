@@ -199,6 +199,7 @@ build_cmd_args() {
         -c "$ctx_size"
         -n "$max_tokens"
         --no-warmup
+	--ignore-eos 
     )
 
     if [[ "$backend" == "llama_cpp" ]]; then
