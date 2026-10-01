@@ -248,14 +248,26 @@ void kairox_memcpy_batch_reload(char *              weight_base,
     attr.flags          = cudaMemcpyFlagPreferOverlapWithCompute;
     size_t attr_idx     = 0;
 
+    /**
+     * 시그니처가 버전마다 다르다 (cudaTypedefs.h 의 PFN_cuMemcpyBatchAsync_v12080 / _v13000):
+     *   12.8 ~ 12.x : (..., numAttrs, size_t * failIdx, stream)  — 실패한 복사의 인덱스를 받는다
+     *   13.0 ~      : (..., numAttrs,                   stream)  — failIdx 가 빠졌다
+     */
+    size_t fail_idx = 0;
+    (void) fail_idx;
+#if CUDART_VERSION >= 13000
     const cudaError_t err = cudaMemcpyBatchAsync(dsts.data(), srcs.data(), sizes.data(),
                                                  reload_count, &attr, &attr_idx, 1, stream);
+#else
+    const cudaError_t err = cudaMemcpyBatchAsync(dsts.data(), srcs.data(), sizes.data(),
+                                                 reload_count, &attr, &attr_idx, 1, &fail_idx, stream);
+#endif
     if (err != cudaSuccess) {
         static bool warned = false;
         if (!warned) {
             warned = true;
-            fprintf(stderr, "KAIROX_MEMCPY_BATCH: cudaMemcpyBatchAsync 실패 (%s) — zerocopy 로 폴백\n",
-                    cudaGetErrorString(err));
+            fprintf(stderr, "KAIROX_MEMCPY_BATCH: cudaMemcpyBatchAsync 실패 (%s, fail_idx=%zu) — zerocopy 로 폴백\n",
+                    cudaGetErrorString(err), fail_idx);
         }
         kairox_zerocopy_reload(weight_base, cache_base, group_nbytes, stream, reload_plan, reload_count);
         return;
