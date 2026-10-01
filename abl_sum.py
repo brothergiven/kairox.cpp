@@ -16,7 +16,7 @@ import csv, glob, os, re, statistics, unicodedata
 
 PROF  = os.environ.get("PROF",  "prof")
 LOGS  = os.environ.get("LOGS",  "abl_logs")
-CELLS = ["Ga", "Na", "G", "N", "Niso", "Nhalf", "Nns", "Nnsc", "Nb"]
+CELLS = ["Ga", "Na", "G", "N", "Giso", "Niso", "Nhalf", "Nns", "Nnsc", "Nb"]
 
 # 커널을 역할로 묶는다. 위에서부터 먼저 맞는 것.
 ROLES = [
@@ -104,6 +104,17 @@ def read_pairs_file(path, keep_na=False):
     return out
 
 
+CAL = os.environ.get("CAL", "abl_cal.txt")
+cal = {}
+if os.path.exists(CAL):
+    for line in open(CAL, errors="ignore"):
+        p = line.split()
+        if len(p) >= 3:
+            try:
+                cal[(p[0], p[1])] = float(p[2])
+            except ValueError:
+                pass
+
 nsys_wall = read_pairs_file("abl_nsys_wall.txt")
 ts_wall   = {}
 for line in (open("abl_clocks.txt", errors="ignore") if os.path.exists("abl_clocks.txt") else []):
@@ -173,7 +184,7 @@ for model in models:
     print(f"\n{'='*96}\n{model}\n{'='*96}")
     print("\n[1] 전송량과 선택 크기   (plan 패밀리 — 이 표가 안 맞으면 아래는 무효)")
     print(lj("셀", 7) + rj("n_groups", 10) + rj("실행짝/Ls", 11) + rj("뉴런/Ls", 10)
-          + rj("vs G", 8) + rj("|S|/K", 8) + rj("스캔ms", 8) + rj("적용ms", 8) + rj("호스트ms", 9))
+          + rj("vs T", 8) + rj("|S|/K", 8) + rj("스캔ms", 8) + rj("적용ms", 8) + rj("호스트ms", 9))
     # g=1 split 의 n_groups 가 곧 n_ff 이므로, 가장 큰 n_groups 로 나누면 group_size 가 나온다.
     ngs = [p["ngroups"] for p in plans.values() if p.get("ngroups")]
     n_ff = max(ngs) if ngs else 0
@@ -182,7 +193,11 @@ for model in models:
         ng = p.get("ngroups") or 0
         return p["pairs"] * (n_ff / ng) if (ng and n_ff) else None
 
-    gref = neurons(plans["G"]) if (plans.get("G") or {}).get("pairs") else None
+    # 동일전송 목표 T 는 cal 이 정한 값을 읽는다 (= min(그룹 수요, 뉴런 수요)).
+    gref = cal.get((model, "T"))
+    if gref:
+        print(f"    목표 T = {gref:.1f} 뉴런/Ls"
+              f"   (그룹 수요 {cal.get((model,'d16'), 0):.1f}, 뉴런 수요 {cal.get((model,'d1'), 0):.1f})")
     for c in CELLS:
         p = plans.get(c) or {}
         if not p.get("pairs"):
@@ -250,7 +265,8 @@ for model in models:
     PAIRS = [("Nns",  "Niso", "정렬 제거"),
              ("Nnsc", "Nns",  "호스트 스캔 제거"),
              ("Nb",   "Niso", "전송 경로 batch"),
-             ("Niso", "G",    "입도+전송 (동일전송)"),
+             ("Niso", "Giso", "입도 (동일전송)"),
+             ("N",    "G",    "입도 (양쪽 상한 없음)"),
              ("G",    "Ga",   "되먹임 제거 (그룹)"),
              ("N",    "Niso", "상한 해제"),
              ("Na",   "Ga",   "입도 (되먹임 켠 채)"),
