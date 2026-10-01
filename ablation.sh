@@ -18,10 +18,11 @@
 # 그래서 기준 축(Ga/Na)은 상한 없는 셀에만 두고, 제거 사다리는 alpha=0 에서만 돌린다.
 #
 # usage
-#   bash ablation.sh cal     # 수요 측정 + 상한/tau 이분 탐색          (~45분)
-#   bash ablation.sh ts      # 벽시계 9셀 x 2모델 x 3반복, 라운드로빈  (~40분)
-#   bash ablation.sh plan    # PROFILE_PLAN  9셀 x 2모델 x 1런         (~12분)
-#   bash ablation.sh nsys    # 커널 분해     9셀 x 2모델 x (맨+nsys)   (~40분)
+#   bash ablation.sh all     # 전 패밀리 순서대로, 로그 파일로      (5모델 ~7시간)
+#   bash ablation.sh cal     # 수요 측정 + 상한/tau 이분 탐색          (모델당 ~22분)
+#   bash ablation.sh ts      # 벽시계 9셀 x 모델 x 3반복, 라운드로빈    (모델당 ~20분)
+#   bash ablation.sh plan    # PROFILE_PLAN  9셀 x 모델 x 1런          (모델당 ~6분)
+#   bash ablation.sh nsys    # 커널 분해     9셀 x 모델 x (맨+nsys)    (모델당 ~20분)
 #   bash ablation.sh slope   # PLAN_DELAY_US 0/200/400 on Niso        (~3분)
 #   bash ablation.sh dump    # 품질 지표(낭비율/적중률)               (~20분)
 #
@@ -47,10 +48,16 @@ NSYS_N=${NSYS_N:-128}
 CAL=${CAL:-abl_cal.txt}
 BIN=./build_rel/bin/llama-completion
 
-# 이름|모델|split 접두|그룹 n_group|g=1 n_group|group_size
+# 이름|모델|split 접두|그룹 n_group|g=1 n_group
+# group_size 는 박아두지 않고 g1/g16 으로 계산한다 — 모델마다 다르다:
+#   prosparse 16 / opt-6.7b 16 / Bamboo 16 / SparseQwen2 32 / opt-30b 28
+# 16 으로 박아뒀다가 SparseQwen2 와 opt-30b 의 전송량을 2배·1.75배 과소평가할 뻔했다.
 MODELS=(
-  "opt-6.7b|opt-6.7b|opt-6.7b-sparkinfer-model-split|1024|16384|16"
-  "Bamboo|Bamboo-base-v0_1|Bamboo-base-v0_1-sparkinfer-model-split|896|14336|16"
+  "opt-6.7b|opt-6.7b|opt-6.7b-sparkinfer-model-split|1024|16384"
+  "Bamboo|Bamboo-base-v0_1|Bamboo-base-v0_1-sparkinfer-model-split|896|14336"
+  "prosparse-7b|prosparse-llama-2-7b|prosparse-llama-2-7b-sparkinfer-model-split|688|11008"
+  "SparseQwen2|SparseQwen2-7B|SparseQwen2-7B-sparkinfer-model-split|592|18944"
+  "opt-30b|opt-30b-Q4_K_M|opt-30b-sparkinfer-model-split|1024|28672"
 )
 
 # 이름 split zc gather batch 예산 nosort compact alpha
@@ -202,7 +209,7 @@ cal)
   }
 
   for e in "${MODELS[@]}"; do
-    IFS='|' read -r nm mo base g16 g1 gs <<<"$e"
+    IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
     want "$nm" || continue
     check "$nm" "$mo" "$base" "$g16" "$g1" || continue
 
@@ -257,7 +264,7 @@ ts)
   printf '%-10s %-6s %-6s %-9s %-8s %4s  %-9s  %s\n' 모델 셀 예산 B tau rep t/s clocks
   for ((rep=1; rep<=REPS; rep++)); do
     for e in "${MODELS[@]}"; do
-      IFS='|' read -r nm mo base g16 g1 gs <<<"$e"
+      IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
       want "$nm" || continue
       check "$nm" "$mo" "$base" "$g16" "$g1" >/dev/null || continue
       for c in "${CELLS[@]}"; do
@@ -297,7 +304,7 @@ ts)
 plan)
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
   for e in "${MODELS[@]}"; do
-    IFS='|' read -r nm mo base g16 g1 gs <<<"$e"
+    IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
     want "$nm" || continue
     check "$nm" "$mo" "$base" "$g16" "$g1" || continue
     for c in "${CELLS[@]}"; do
@@ -324,7 +331,7 @@ nsys)
   # 측정에서 차지하는 비중이 그만큼 커지고, 시리즈의 첫 셀이 그 영향을 혼자 받는다.
   # ts 에서는 런이 길어 묻혔지만 (rep1=rep2 로 확인) 여기서는 못 묻는다.
   for e in "${MODELS[@]}"; do
-    IFS='|' read -r nm mo base g16 g1 gs <<<"$e"
+    IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
     want "$nm" || continue
     check "$nm" "$mo" "$base" "$g16" "$g1" >/dev/null || continue
     echo "예열 (버린다): $nm  $(clocks)"
@@ -333,7 +340,7 @@ nsys)
     break
   done
   for e in "${MODELS[@]}"; do
-    IFS='|' read -r nm mo base g16 g1 gs <<<"$e"
+    IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
     want "$nm" || continue
     check "$nm" "$mo" "$base" "$g16" "$g1" || continue
     for c in "${CELLS[@]}"; do
@@ -370,7 +377,7 @@ nsys)
 slope)
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
   for e in "${MODELS[@]}"; do
-    IFS='|' read -r nm mo base g16 g1 gs <<<"$e"
+    IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
     want "$nm" || continue
     check "$nm" "$mo" "$base" "$g16" "$g1" || continue
     for c in "${CELLS[@]}"; do
@@ -395,7 +402,7 @@ slope)
 dump)
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
   for e in "${MODELS[@]}"; do
-    IFS='|' read -r nm mo base g16 g1 gs <<<"$e"
+    IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
     want "$nm" || continue
     check "$nm" "$mo" "$base" "$g16" "$g1" || continue
     for c in "${CELLS[@]}"; do
@@ -420,7 +427,7 @@ show)
   printf '%-10s %-6s %-26s %-4s %-4s %-4s %-9s %-8s %-7s %-8s %s\n' \
          모델 셀 split zc gath bat B tau nosort compact alpha
   for e in "${MODELS[@]}"; do
-    IFS='|' read -r nm mo base g16 g1 gs <<<"$e"
+    IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
     want "$nm" || continue
     for c in "${CELLS[@]}"; do
       read -r cn _ <<<"$c"
@@ -436,8 +443,36 @@ show)
   done
   ;;
 
+# ---------------------------------------------------------------- all
+# 전 패밀리를 순서대로. 5 모델이면 일곱 시간쯤 걸리므로 로그를 파일로 남긴다.
+# 한 패밀리가 실패해도 다음으로 넘어간다 — 긴 런이 중간에서 통째로 죽지 않게.
+# 다만 cal 이 실패하면 나머지가 전부 무의미하므로 거기서는 멈춘다.
+# ONLY / CELL / REPS / N 은 환경변수라 그대로 하위 호출에 상속된다.
+all)
+  log=${ALL_LOG:-abl_all_$(date +%m%d_%H%M).log}
+  echo "전체 로그: $log"
+  {
+    echo "시작 $(date '+%F %T')   모델 ${#MODELS[@]} 개   N=$N NSYS_N=$NSYS_N REPS=$REPS"
+    bash ablation.sh show
+    for f in cal ts plan slope nsys; do
+      echo; echo "######################## $f   $(date '+%F %T')"
+      t0=$SECONDS
+      if bash ablation.sh "$f"; then
+        printf '######################## %s 완료  %d 분\n' "$f" $(( (SECONDS - t0) / 60 ))
+      else
+        printf '######################## %s 실패  %d 분\n' "$f" $(( (SECONDS - t0) / 60 ))
+        [[ "$f" == cal ]] && { echo "cal 이 실패하면 나머지가 무의미하다 — 중단"; break; }
+      fi
+    done
+    echo; echo "######################## 요약   $(date '+%F %T')"
+    python3 abl_sum.py
+    echo "끝 $(date '+%F %T')"
+  } 2>&1 | tee "$log"
+  echo; echo "전체 로그: $log"
+  ;;
+
 *)
-  echo "usage: bash ablation.sh {show|cal|ts|plan|nsys|slope|dump}" >&2
+  echo "usage: bash ablation.sh {show|all|cal|ts|plan|nsys|slope|dump}" >&2
   exit 1
   ;;
 esac
