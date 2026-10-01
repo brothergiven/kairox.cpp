@@ -76,25 +76,37 @@ case "${1:-cal}" in
 
 cal)
   : > "$TAUS"
-  echo "== tau 자동 보정 — |S|/K 가 1 에 가장 가까운 값을 고른다"
+  echo "== tau 이분 탐색 — |S|/K 를 1 에 맞춘다 (|S| 는 tau 에 단조 감소)"
   for e in "${MODELS[@]}"; do
     IFS='|' read -r nm mo base g16 g1 b <<<"$e"
     want "$nm" || continue
     check "$nm" "$mo" "$base" "$g16" "$g1" || continue
     for sp in "$g16" "$g1"; do
-      best=; bestd=999
-      for tau in 0.02 0.05 0.10 0.15 0.20 0.30; do
+      lo=0.0005; hi=0.8; best=; bestd=999; bestr=
+      for it in 1 2 3 4 5 6 7; do
+        tau=$(awk -v a="$lo" -v b="$hi" 'BEGIN{printf "%.5f", sqrt(a*b)}')   # 로그 중점
         out=$(run "$mo" "$base-$sp" 1 0 1 "$tau" "$b" 64 1 1 | grep -oE '\([0-9.]+ 배\)' | tail -1)
         r=${out//[^0-9.]/}
-        [[ -z "$r" ]] && { printf '   %-13s %-6s tau=%-5s  (측정 실패)\n' "$nm" "$sp" "$tau"; continue; }
+        if [[ -z "$r" ]]; then
+          printf '   %-13s %-6s tau=%-8s (측정 실패)\n' "$nm" "$sp" "$tau"; break
+        fi
+        printf '   %-13s %-6s tau=%-8s |S|/K=%s\n' "$nm" "$sp" "$tau" "$r"
         d=$(awk -v x="$r" 'BEGIN{d=x-1; if(d<0)d=-d; print d}')
-        printf '   %-13s %-6s tau=%-5s |S|/K=%s\n' "$nm" "$sp" "$tau" "$r"
-        awk -v a="$d" -v b="$bestd" 'BEGIN{exit !(a<b)}' && { best=$tau; bestd=$d; }
+        awk -v a="$d" -v c="$bestd" 'BEGIN{exit !(a<c)}' && { best=$tau; bestd=$d; bestr=$r; }
+        # 2% 안에 들면 더 쪼갤 이유가 없다
+        awk -v a="$bestd" 'BEGIN{exit !(a<0.02)}' && break
+        # |S| 가 크면 tau 를 올려야 한다
+        if awk -v x="$r" 'BEGIN{exit !(x>1)}'; then lo=$tau; else hi=$tau; fi
       done
-      [[ -n "$best" ]] && { echo "$nm $sp $best" >> "$TAUS"; echo "   -> $nm $sp 선택 tau=$best"; }
+      if [[ -n "$best" ]]; then
+        echo "$nm $sp $best $bestr" >> "$TAUS"
+        flag=""
+        awk -v x="$bestr" 'BEGIN{exit !(x<0.9 || x>1.1)}' && flag="   <<< |S|/K 가 1 에서 10% 넘게 벗어남 — 이 셀은 비교 불가"
+        echo "   -> $nm $sp  tau=$best  |S|/K=$bestr$flag"
+      fi
     done
   done
-  echo; echo "== $TAUS"; cat "$TAUS"
+  echo; echo "== $TAUS  (모델 split tau |S|/K)"; cat "$TAUS"
   ;;
 
 run|base)
@@ -111,6 +123,9 @@ run|base)
       tau=0
       if ((nosort)); then
         tau=$(awk -v n="$nm" -v s="$2" '$1==n && $2==s {print $3}' "$TAUS")
+        rat=$(awk -v n="$nm" -v s="$2" '$1==n && $2==s {print $4}' "$TAUS")
+        awk -v x="${rat:-1}" 'BEGIN{exit !(x<0.9 || x>1.1)}' && \
+          echo "   경고: $nm/$1 의 |S|/K=$rat — 상주 집합 크기가 달라 비교가 오염된다" >&2
         [[ -z "$tau" ]] && { echo "   skip $nm/$1 — $TAUS 에 tau 없음"; continue; }
       fi
       vals=()
