@@ -365,6 +365,14 @@ nsys)
         --report cuda_gpu_kern_sum --report cuda_gpu_mem_time_sum --report cuda_gpu_mem_size_sum \
         "prof/$tag.nsys-rep" > "abl_logs/stats__${nm}__${cn}.log" 2>&1
       ls "prof/${tag}"_*.csv 2>/dev/null | sed 's/^/   /'
+      # CSV 가 나왔으면 트레이스를 지운다. abl_sum.py 는 CSV 만 읽는다.
+      # 5 모델 x 9 셀이면 .nsys-rep 가 수 GB 씩 쌓여 디스크를 채운다 —
+      # 밤새 돌리는 런이 디스크 가득으로 죽는 걸 막는다.
+      if compgen -G "prof/${tag}_*.csv" >/dev/null; then
+        rm -f "prof/$tag.nsys-rep" "prof/$tag.sqlite"
+      else
+        echo "   CSV 없음 — 트레이스를 남긴다 (prof/$tag.nsys-rep)"
+      fi
     done
   done
   echo; echo "요약: python3 abl_sum.py"
