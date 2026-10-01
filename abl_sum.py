@@ -16,16 +16,17 @@ import csv, glob, os, re, statistics, unicodedata
 
 PROF  = os.environ.get("PROF",  "prof")
 LOGS  = os.environ.get("LOGS",  "abl_logs")
-CELLS = ["Ga", "Na", "G", "N", "Giso", "Niso", "Nhalf", "Nns", "Nnsc", "Nb"]
+CELLS = ["Ga", "Na", "G", "N", "Giso", "Niso", "Nhalf", "Nns", "Nnsc"]
 
 # 커널을 역할로 묶는다. 위에서부터 먼저 맞는 것.
 ROLES = [
     ("정렬",   ("RadixSort", "cub::", "DeviceRadix", "init_indices", "init_offsets")),
     ("마스크", ("kairox_dfr_mask", "index_mask")),
     ("임계",   ("shifted_step",)),
+    ("압축",   ("kairox_compact",)),
     ("전송",   ("kairox_zerocopy", "kairox_scatter", "kairox_gather")),
 ]
-ORDER = ["정렬", "마스크", "임계", "전송", "본연산", "기타"]
+ORDER = ["정렬", "마스크", "임계", "압축", "전송", "본연산", "기타"]
 COMPUTE = ("axpy", "dequantize", "mul_mat", "_mmv", "_mmq", "gemm", "soft_max",
            "rms_norm", "rope", "silu", "relu", "cpy", "add", "mul_f32", "norm")
 
@@ -238,10 +239,15 @@ for model in models:
         row += rj(f"{v['total']/1e6/s:.3f}", 9) + rj(f"{h2d/1e6/s:.3f}", 8) + rj(f"{mb/s:.3f}", 9)
         print(row)
 
-    # ---- 3. 커널 시간 합 대 벽시계. 차액이 겹침이다.
-    print("\n[3] 커널 합 대 벽시계   (짝 벽시계 = nsys 와 같은 인자의 맨런)")
-    print(lj("셀", 7) + rj("Σ커널ms", 10) + rj("짝t/s", 9) + rj("짝ms/tok", 10)
-          + rj("GPU유휴", 9) + rj("긴t/s", 9) + rj("긴/Ga", 8))
+    # ---- 3. GPU 총 작업 대 벽시계.
+    # naive 의 전송 바이트는 H2D memops 에, zerocopy 의 전송 시간은 커널에 기록된다.
+    # 그래서 Σ커널 만으로는 전송 경로가 다른 셀을 비교할 수 없다 — H2D 를 더해야 한다.
+    # 합이 벽시계를 넘는 셀이 많다: 커널과 복사가 동시에 돌기 때문이다.
+    # 그러므로 이 비율은 점유율이 아니라 "겹침이 얼마나 일어나는가" 의 지표다.
+    print("\n[3] GPU 총 작업 대 벽시계   (짝 벽시계 = nsys 와 같은 인자의 맨런)")
+    print("    Σ커널+H2D 가 벽시계를 넘으면 커널과 복사가 겹쳐 돈 것이다 (점유율이 아니다)")
+    print(lj("셀", 7) + rj("Σ커널", 9) + rj("H2D", 8) + rj("합", 9) + rj("짝ms/tok", 10)
+          + rj("합/벽", 8) + rj("짝t/s", 9) + rj("긴t/s", 9) + rj("긴/Ga", 8))
     ga_long = statistics.median(ts_wall[(model, "Ga")]) if (model, "Ga") in ts_wall else None
     for c in CELLS:
         v = data.get(c)
@@ -249,14 +255,17 @@ for model in models:
             continue
         s = steps(c)
         ker = v["total"] / 1e6 / s if s else None
+        h2d = sum(t for k, t in v["mem"].items() if "HtoD" in k or "Host-to" in k) / 1e6 / s if s else None
+        tot = (ker + h2d) if (ker is not None and h2d is not None) else None
         pw  = statistics.median(nsys_wall[(model, c)]) if (model, c) in nsys_wall else None
         pms = 1000.0 / pw if pw else None
-        idle = (1 - ker / pms) * 100 if (ker and pms) else None
         lw  = statistics.median(ts_wall[(model, c)]) if (model, c) in ts_wall else None
-        print(lj(c, 7) + rj(f"{ker:.3f}" if ker else "—", 10)
-              + rj(f"{pw:.2f}" if pw else "—", 9)
+        print(lj(c, 7) + rj(f"{ker:.3f}" if ker else "—", 9)
+              + rj(f"{h2d:.3f}" if h2d is not None else "—", 8)
+              + rj(f"{tot:.3f}" if tot else "—", 9)
               + rj(f"{pms:.3f}" if pms else "—", 10)
-              + rj(f"{idle:.1f}%" if idle is not None else "—", 9)
+              + rj(f"{tot/pms*100:.0f}%" if (tot and pms) else "—", 8)
+              + rj(f"{pw:.2f}" if pw else "—", 9)
               + rj(f"{lw:.2f}" if lw else "—", 9)
               + rj(f"{lw/ga_long:.3f}" if (lw and ga_long) else "—", 8))
 
@@ -264,7 +273,6 @@ for model in models:
     print("\n[4] 한 변수 비교   Δms/토큰 (커널) 과 Δ벽시계")
     PAIRS = [("Nns",  "Niso", "정렬 제거"),
              ("Nnsc", "Nns",  "호스트 스캔 제거"),
-             ("Nb",   "Niso", "전송 경로 batch"),
              ("Niso", "Giso", "입도 (동일전송)"),
              ("N",    "G",    "입도 (양쪽 상한 없음)"),
              ("G",    "Ga",   "되먹임 제거 (그룹)"),

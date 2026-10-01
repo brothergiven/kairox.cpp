@@ -6,7 +6,6 @@
 #
 #   Nns   대 Niso    정렬 단독        (NOSORT)
 #   Nnsc  대 Nns     호스트 스캔 단독 (GPU_COMPACT)
-#   Nb    대 Niso    전송 경로 단독   (cudaMemcpyBatchAsync)
 #   Niso  대 Giso    입도 단독        (같은 전송량, 같은 alpha)
 #   N     대 G       입도 단독        (양쪽 상한 없음)
 #   G     대 Ga      되먹임 단독      (그룹 입도)
@@ -19,10 +18,10 @@
 # 그래서 기준 축(Ga/Na)은 상한 없는 셀에만 두고, 제거 사다리는 alpha=0 에서만 돌린다.
 #
 # usage
-#   bash ablation.sh cal     # 수요 측정 + 상한/tau 이분 탐색          (~30분)
-#   bash ablation.sh ts      # 벽시계 10셀 x 2모델 x 3반복, 라운드로빈 (~40분)
-#   bash ablation.sh plan    # PROFILE_PLAN  10셀 x 2모델 x 1런        (~17분)
-#   bash ablation.sh nsys    # 커널 분해     10셀 x 2모델 x (맨+nsys)  (~45분)
+#   bash ablation.sh cal     # 수요 측정 + 상한/tau 이분 탐색          (~45분)
+#   bash ablation.sh ts      # 벽시계 9셀 x 2모델 x 3반복, 라운드로빈  (~40분)
+#   bash ablation.sh plan    # PROFILE_PLAN  9셀 x 2모델 x 1런         (~12분)
+#   bash ablation.sh nsys    # 커널 분해     9셀 x 2모델 x (맨+nsys)   (~40분)
 #   bash ablation.sh slope   # PLAN_DELAY_US 0/200/400 on Niso        (~3분)
 #   bash ablation.sh dump    # 품질 지표(낭비율/적중률)               (~20분)
 #
@@ -39,7 +38,12 @@ M=${M:-/root/SPIF-GGUF}
 ONLY=${ONLY:-}
 CELL=${CELL:-}
 REPS=${REPS:-3}
-N=${N:-128}
+# churn(전송량)은 런 길이에 따라 달라진다 — 초기 스텝은 캐시가 채워지는 중이라 높고,
+# 길어지면 그 전이가 평균에 묻힌다. Bamboo 의 그룹 전송량이 n=64 에서 492.8,
+# n=128 에서 454.4 였다 (8.5% 차이). 그래서 cal 은 비교 런과 같은 길이로 재야 한다.
+# cal / ts / plan / slope 가 모두 N 을 쓴다. nsys 만 트레이스 크기 때문에 짧게 간다.
+N=${N:-512}
+NSYS_N=${NSYS_N:-128}
 CAL=${CAL:-abl_cal.txt}
 BIN=./build_rel/bin/llama-completion
 
@@ -60,8 +64,10 @@ CELLS=(
   "Nhalf g1  1 0 0 half1 0 0 0.00"
   "Nns   g1  1 0 0 iso1  1 0 0.00"
   "Nnsc  g1  1 0 0 iso1  1 1 0.00"
-  "Nb    g1  0 0 1 iso1  0 0 0.00"
 )
+# Nb (cudaMemcpyBatchAsync) 는 뺐다. 두 모델에서 Niso 대비 0.865 / 0.733 으로 졌고
+# nsys 아래서는 batch API 계측 때문에 0.456 까지 무너져 분해도 못 읽는다.
+# 네 경로 중 최하위로 확정 — zerocopy 가 g=1 의 답이다.
 
 [[ -x "$BIN" ]] || { echo "MISSING $BIN — bash compile_kairox.sh rel" >&2; exit 1; }
 mkdir -p prof abl_logs abl_dumps
@@ -141,30 +147,42 @@ case "${1:-cal}" in
 cal)
   : > "$CAL"
 
-  # 상한 없는 수요를 뉴런/레이어-스텝으로. $1=모델 $2=split $3=zerocopy $4=group_size
-  demand() {
-    local p; p=$(run "$1" "$2" "$3" 0 0 1.0 0 0 0.00 0 64 1 1 0 0 | pairs_of)
+  # 전송량 한 번 측정. $1=모델 $2=split $3=zerocopy $4=group_size $5=B
+  probe() {
+    local p; p=$(run "$1" "$2" "$3" 0 0 "$5" 0 0 0.00 0 "$N" 1 1 0 0 | pairs_of)
     [[ -z "$p" ]] && return 1
     awk -v x="$p" -v g="$4" 'BEGIN{printf "%.2f", x*g}'
   }
 
+  # 같은 설정을 REPS 번 재고 중위를 돌려준다. churn 측정은 단발로 11% 흔들린다.
+  probe_med() {
+    local vs=() v
+    for ((r=1; r<=REPS; r++)); do v=$(probe "$@") && vs+=("$v"); done
+    ((${#vs[@]})) || return 1
+    med "${vs[@]}"
+  }
+
   # 목표 전송량에 상한을 맞춘다 (실행량은 B 에 단조 증가).
+  # 탐색 중에는 단발로 훑고(싸게), 고른 B 는 REPS 번 반복으로 검증한다.
+  # 측정 노이즈가 11% 이므로 탐색 허용오차를 그보다 좁게 잡으면 노이즈에 과적합한다.
   # $1=모델 $2=split $3=zerocopy $4=group_size $5=목표  ->  "B 달성비" 를 echo
   bisect_b() {
-    local lo=0.0002 hi=1.0 best= bestd=999 bestv= b v r d
-    for it in 1 2 3 4 5 6 7 8; do
+    local lo=0.0002 hi=1.0 best= bestd=999 b v r d
+    for it in 1 2 3 4 5 6; do
       b=$(awk -v a="$lo" -v c="$hi" 'BEGIN{printf "%.6f", sqrt(a*c)}')
-      v=$(run "$1" "$2" "$3" 0 0 "$b" 0 0 0.00 0 64 1 1 0 0 | pairs_of)
+      v=$(probe "$1" "$2" "$3" "$4" "$b")
       [[ -z "$v" ]] && { printf '      B=%-9s (측정 실패)\n' "$b" >&2; break; }
-      v=$(awk -v x="$v" -v g="$4" 'BEGIN{printf "%.2f", x*g}')
       r=$(awk -v x="$v" -v t="$5" 'BEGIN{printf "%.3f", x/t}')
       printf '      B=%-9s 전송 %-9s 달성/목표=%s\n' "$b" "$v" "$r" >&2
       d=$(awk -v x="$r" 'BEGIN{d=x-1; if(d<0)d=-d; print d}')
-      awk -v a="$d" -v c="$bestd" 'BEGIN{exit !(a<c)}' && { best=$b; bestd=$d; bestv=$r; }
-      awk -v a="$bestd" 'BEGIN{exit !(a<0.02)}' && break
+      awk -v a="$d" -v c="$bestd" 'BEGIN{exit !(a<c)}' && { best=$b; bestd=$d; }
+      awk -v a="$bestd" 'BEGIN{exit !(a<0.08)}' && break
       if awk -v x="$r" 'BEGIN{exit !(x>1)}'; then hi=$b; else lo=$b; fi
     done
-    [[ -n "$best" ]] && echo "$best $bestv"
+    [[ -z "$best" ]] && return 1
+    v=$(probe_med "$1" "$2" "$3" "$4" "$best") || return 1
+    printf '      검증 %s 반복 중위: 전송 %s\n' "$REPS" "$v" >&2
+    echo "$best $(awk -v x="$v" -v t="$5" 'BEGIN{printf "%.3f", x/t}')"
   }
 
   # 상한을 기록한다. 수요가 목표 이하면 상한이 필요 없으므로 1.0 으로 둔다.
@@ -179,7 +197,7 @@ cal)
     read -r b r <<<"$(bisect_b "$5" "$6" "$7" "$8" "$4")"
     [[ -z "$b" ]] && { echo "   $2 보정 실패"; return; }
     echo "$1 $2 $b" >> "$CAL"; echo "$1 ${2}rat $r" >> "$CAL"
-    f=""; awk -v x="$r" 'BEGIN{exit !(x<0.95 || x>1.05)}' && f="   <<< 5% 밖 — 동일전송 비교 불가"
+    f=""; awk -v x="$r" 'BEGIN{exit !(x<0.90 || x>1.10)}' && f="   <<< 10% 밖 — 동일전송 비교 불가"
     printf '   -> %s=%s  달성/목표=%s%s\n' "$2" "$b" "$r" "$f"
   }
 
@@ -188,9 +206,9 @@ cal)
     want "$nm" || continue
     check "$nm" "$mo" "$base" "$g16" "$g1" || continue
 
-    echo "== $nm : 상한 없는 수요"
-    d16=$(demand "$mo" "$base-$g16" 0 "$gs") || { echo "   실패 — PROFILE_PLAN 출력 없음 (KAIROX_PARALLEL 확인)"; continue; }
-    d1=$(demand "$mo" "$base-$g1" 1 1)       || { echo "   실패"; continue; }
+    echo "== $nm : 상한 없는 수요 ($REPS 반복 중위, -n $N)"
+    d16=$(probe_med "$mo" "$base-$g16" 0 "$gs" 1.0) || { echo "   실패 — PROFILE_PLAN 출력 없음 (KAIROX_PARALLEL 확인)"; continue; }
+    d1=$(probe_med "$mo" "$base-$g1" 1 1 1.0)       || { echo "   실패"; continue; }
     T=$(awk -v a="$d16" -v b="$d1" 'BEGIN{printf "%.2f", (a<b)?a:b}')
     H=$(awk -v t="$T" 'BEGIN{printf "%.2f", t/2}')
     printf '   그룹 %s   뉴런 %s   뉴런/그룹 %s  ->  목표 T=%s (더 적은 쪽)\n' \
@@ -207,7 +225,7 @@ cal)
     lo=0.0005; hi=0.8; best=; bestd=999; bestv=
     for it in 1 2 3 4 5 6 7; do
       t=$(awk -v a="$lo" -v c="$hi" 'BEGIN{printf "%.5f", sqrt(a*c)}')
-      r=$(run "$mo" "$base-$g1" 1 0 0 1.0 1 0 0.00 "$t" 64 1 1 0 0 | sel_of)
+      r=$(run "$mo" "$base-$g1" 1 0 0 1.0 1 0 0.00 "$t" "$N" 1 1 0 0 | sel_of)
       [[ -z "$r" ]] && { printf '   tau=%-9s (측정 실패)\n' "$t"; break; }
       printf '   tau=%-9s |S|/K=%s\n' "$t" "$r"
       d=$(awk -v x="$r" 'BEGIN{d=x-1; if(d<0)d=-d; print d}')
@@ -232,7 +250,11 @@ ts)
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
   declare -A R
   : > abl_clocks.txt
-  printf '%-10s %-6s %-6s %-9s %-6s %5s  %-9s  %s\n' 모델 셀 반복 B tau rep t/s clocks
+
+  # 예열은 넣지 않는다. 첫 런이 유휴 클럭에서 출발하지만 -n 512 x 3회 는 충분히 길어
+  # 발사 직후의 전이 구간이 측정에 묻힌다 (rep1 과 rep2 가 같은 값을 줘서 확인됐다).
+  # 짧은 런을 쓰는 nsys 패밀리는 사정이 달라 거기에만 예열을 둔다.
+  printf '%-10s %-6s %-6s %-9s %-8s %4s  %-9s  %s\n' 모델 셀 예산 B tau rep t/s clocks
   for ((rep=1; rep<=REPS; rep++)); do
     for e in "${MODELS[@]}"; do
       IFS='|' read -r nm mo base g16 g1 gs <<<"$e"
@@ -245,7 +267,7 @@ ts)
         ck=$(clocks)
         printf '%-10s %-6s %-6s %-9s %-6s %5s  ' "$nm" "$cn" "$C_BUD" "$C_B" "$C_TAU" "$rep"
         v=$(WRAP= run "$mo" "$C_SPLIT" "$C_ZC" "$C_GA" "$C_BA" "$C_B" "$C_NS" "$C_CP" "$C_AL" \
-                   "$C_TAU" 512 3 0 0 0 \
+                   "$C_TAU" "$N" 3 0 0 0 \
             | grep -oE 'decode mean:[[:space:]]*[0-9.]+' | tail -1 | grep -oE '[0-9.]+$')
         printf '%-9s  %s\n' "${v:-실패}" "$ck"
         echo "$nm $cn $rep ${v:-NA} $ck" >> abl_clocks.txt
@@ -297,6 +319,19 @@ nsys)
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
   command -v nsys >/dev/null || { echo "nsys 없음" >&2; exit 1; }
   : > abl_nsys_wall.txt
+
+  # 이 패밀리의 런은 -n $N x 1회 로 ts 의 1/4 길이다. 발사 직후의 저클럭 구간이
+  # 측정에서 차지하는 비중이 그만큼 커지고, 시리즈의 첫 셀이 그 영향을 혼자 받는다.
+  # ts 에서는 런이 길어 묻혔지만 (rep1=rep2 로 확인) 여기서는 못 묻는다.
+  for e in "${MODELS[@]}"; do
+    IFS='|' read -r nm mo base g16 g1 gs <<<"$e"
+    want "$nm" || continue
+    check "$nm" "$mo" "$base" "$g16" "$g1" >/dev/null || continue
+    echo "예열 (버린다): $nm  $(clocks)"
+    WRAP= run "$mo" "$base-$g16" 0 0 0 1.0 0 0 0.00 0 256 1 0 0 0 >/dev/null 2>&1
+    echo "   -> $(clocks)"
+    break
+  done
   for e in "${MODELS[@]}"; do
     IFS='|' read -r nm mo base g16 g1 gs <<<"$e"
     want "$nm" || continue
@@ -311,13 +346,13 @@ nsys)
       # 짝지어진 벽시계. nsys 런과 똑같은 인자(-n $N, 1회)로 바로 앞에 한 번 돈다.
       # ts 패밀리는 -n 512 x 3회라 수준이 다르다 — GPU 유휴 비율은 이 짝으로만 계산한다.
       w=$(WRAP= run "$mo" "$C_SPLIT" "$C_ZC" "$C_GA" "$C_BA" "$C_B" "$C_NS" "$C_CP" "$C_AL" \
-                 "$C_TAU" "$N" 1 0 0 0 \
+                 "$C_TAU" "$NSYS_N" 1 0 0 0 \
           | grep -oE 'decode mean:[[:space:]]*[0-9.]+' | tail -1 | grep -oE '[0-9.]+$')
       echo "$nm $cn ${w:-NA} $(clocks)" >> abl_nsys_wall.txt
       echo "   짝 벽시계 ${w:-실패} t/s"
       WRAP="nsys profile --force-overwrite=true -o prof/$tag --trace=cuda --sample=none --cpuctxsw=none" \
         run "$mo" "$C_SPLIT" "$C_ZC" "$C_GA" "$C_BA" "$C_B" "$C_NS" "$C_CP" "$C_AL" \
-            "$C_TAU" "$N" 1 0 0 0 > "abl_logs/nsys__${nm}__${cn}.log" 2>&1
+            "$C_TAU" "$NSYS_N" 1 0 0 0 > "abl_logs/nsys__${nm}__${cn}.log" 2>&1
       [[ -f "prof/$tag.nsys-rep" ]] || { echo "   리포트 생성 실패 — 로그 확인"; continue; }
       nsys stats --force-export=true --format csv -o "prof/$tag" \
         --report cuda_gpu_kern_sum --report cuda_gpu_mem_time_sum --report cuda_gpu_mem_size_sum \
@@ -346,7 +381,7 @@ slope)
       for us in 0 200 400; do
         printf '   %4s us  ' "$us"
         v=$(WRAP= run "$mo" "$C_SPLIT" "$C_ZC" "$C_GA" "$C_BA" "$C_B" "$C_NS" "$C_CP" "$C_AL" \
-                   "$C_TAU" 512 3 0 0 "$us" \
+                   "$C_TAU" "$N" 3 0 0 "$us" \
             | grep -oE 'decode mean:[[:space:]]*[0-9.]+' | tail -1 | grep -oE '[0-9.]+$')
         echo "${v:-실패} t/s"
       done
