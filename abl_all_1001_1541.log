@@ -1,0 +1,1506 @@
+시작 2026-10-01 15:41:27   모델 5 개   N=512 NSYS_N=128 REPS=3
+모델     셀    split                      zc   gath bat  B         tau      nosort  compact  alpha
+opt-6.7b   Ga     ...-1024                   0    0    0    1.0       0        0       0        0.05
+opt-6.7b   Na     ...-16384                  1    0    0    1.0       0        0       0        0.05
+opt-6.7b   G      ...-1024                   0    0    0    1.0       0        0       0        0.00
+opt-6.7b   N      ...-16384                  1    0    0    1.0       0        0       0        0.00
+opt-6.7b   Giso    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+opt-6.7b   Niso    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+opt-6.7b   Nhalf   <<< abl_cal.txt 에 값 없음 (cal 먼저)
+opt-6.7b   Nns     <<< abl_cal.txt 에 값 없음 (cal 먼저)
+opt-6.7b   Nnsc    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+Bamboo     Ga     ...-896                    0    0    0    1.0       0        0       0        0.05
+Bamboo     Na     ...-14336                  1    0    0    1.0       0        0       0        0.05
+Bamboo     G      ...-896                    0    0    0    1.0       0        0       0        0.00
+Bamboo     N      ...-14336                  1    0    0    1.0       0        0       0        0.00
+Bamboo     Giso    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+Bamboo     Niso    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+Bamboo     Nhalf   <<< abl_cal.txt 에 값 없음 (cal 먼저)
+Bamboo     Nns     <<< abl_cal.txt 에 값 없음 (cal 먼저)
+Bamboo     Nnsc    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+prosparse-7b Ga     ...-688                    0    0    0    1.0       0        0       0        0.05
+prosparse-7b Na     ...-11008                  1    0    0    1.0       0        0       0        0.05
+prosparse-7b G      ...-688                    0    0    0    1.0       0        0       0        0.00
+prosparse-7b N      ...-11008                  1    0    0    1.0       0        0       0        0.00
+prosparse-7b Giso    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+prosparse-7b Niso    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+prosparse-7b Nhalf   <<< abl_cal.txt 에 값 없음 (cal 먼저)
+prosparse-7b Nns     <<< abl_cal.txt 에 값 없음 (cal 먼저)
+prosparse-7b Nnsc    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+SparseQwen2 Ga     ...-592                    0    0    0    1.0       0        0       0        0.05
+SparseQwen2 Na     ...-18944                  1    0    0    1.0       0        0       0        0.05
+SparseQwen2 G      ...-592                    0    0    0    1.0       0        0       0        0.00
+SparseQwen2 N      ...-18944                  1    0    0    1.0       0        0       0        0.00
+SparseQwen2 Giso    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+SparseQwen2 Niso    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+SparseQwen2 Nhalf   <<< abl_cal.txt 에 값 없음 (cal 먼저)
+SparseQwen2 Nns     <<< abl_cal.txt 에 값 없음 (cal 먼저)
+SparseQwen2 Nnsc    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+opt-30b    Ga     ...-1024                   0    0    0    1.0       0        0       0        0.05
+opt-30b    Na     ...-28672                  1    0    0    1.0       0        0       0        0.05
+opt-30b    G      ...-1024                   0    0    0    1.0       0        0       0        0.00
+opt-30b    N      ...-28672                  1    0    0    1.0       0        0       0        0.00
+opt-30b    Giso    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+opt-30b    Niso    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+opt-30b    Nhalf   <<< abl_cal.txt 에 값 없음 (cal 먼저)
+opt-30b    Nns     <<< abl_cal.txt 에 값 없음 (cal 먼저)
+opt-30b    Nnsc    <<< abl_cal.txt 에 값 없음 (cal 먼저)
+
+######################## cal   2026-10-01 15:41:27
+== opt-6.7b : 상한 없는 수요 (3 반복 중위, -n 512)
+   그룹 580.80   뉴런 162.40   뉴런/그룹 0.280  ->  목표 T=162.40 (더 적은 쪽)
+== opt-6.7b : 동일전송 상한
+   iso16  이분 탐색 (목표 162.40)
+      B=0.014142  전송 104.00    달성/목표=0.640
+      B=0.118920  전송 532.80    달성/목표=3.281
+      B=0.041009  전송 284.80    달성/목표=1.754
+      B=0.024082  전송 171.20    달성/목표=1.054
+      검증 3 반복 중위: 전송 171.20
+   -> iso16=0.024082  달성/목표=1.054
+   iso1   수요 162.40 <= 목표 162.40 — 상한 불필요 (B=1.0)
+== opt-6.7b : 절반 상한 (뉴런 쪽만)
+   half1  이분 탐색 (목표 81.20)
+      B=0.014142  전송 81.80     달성/목표=1.007
+      검증 3 반복 중위: 전송 75.20
+   -> half1=0.014142  달성/목표=0.926
+== opt-6.7b : tau 이분 탐색 (|S|/K -> 1, |S| 는 tau 에 단조 감소)
+   tau=0.02000   |S|/K=0.676
+   tau=0.00316   |S|/K=0.908
+   tau=0.00126   |S|/K=0.923
+   tau=0.00079   |S|/K=1.008
+   -> tau=0.00079  |S|/K=1.008
+
+== Bamboo : 상한 없는 수요 (3 반복 중위, -n 512)
+   그룹 425.60   뉴런 716.60   뉴런/그룹 1.684  ->  목표 T=425.60 (더 적은 쪽)
+== Bamboo : 동일전송 상한
+   iso16  수요 425.60 <= 목표 425.60 — 상한 불필요 (B=1.0)
+   iso1   이분 탐색 (목표 425.60)
+      B=0.014142  전송 98.10     달성/목표=0.230
+      B=0.118920  전송 623.50    달성/목표=1.465
+      B=0.041009  전송 283.70    달성/목표=0.667
+      B=0.069834  전송 467.20    달성/목표=1.098
+      B=0.053515  전송 369.00    달성/목표=0.867
+      B=0.061132  전송 418.90    달성/목표=0.984
+      검증 3 반복 중위: 전송 418.90
+   -> iso1=0.061132  달성/목표=0.984
+== Bamboo : 절반 상한 (뉴런 쪽만)
+   half1  이분 탐색 (목표 212.80)
+      B=0.014142  전송 98.10     달성/목표=0.461
+      B=0.118920  전송 623.40    달성/목표=2.930
+      B=0.041009  전송 283.70    달성/목표=1.333
+      B=0.024082  전송 166.80    달성/목표=0.784
+      B=0.031426  전송 217.50    달성/목표=1.022
+      검증 3 반복 중위: 전송 217.50
+   -> half1=0.031426  달성/목표=1.022
+== Bamboo : tau 이분 탐색 (|S|/K -> 1, |S| 는 tau 에 단조 감소)
+   tau=0.02000   |S|/K=1.430
+   tau=0.12649   |S|/K=1.125
+   tau=0.31811   |S|/K=0.851
+   tau=0.20059   |S|/K=1.012
+   -> tau=0.20059  |S|/K=1.012
+
+== prosparse-7b : 상한 없는 수요 (3 반복 중위, -n 512)
+   그룹 296.00   뉴런 226.40   뉴런/그룹 0.765  ->  목표 T=226.40 (더 적은 쪽)
+== prosparse-7b : 동일전송 상한
+   iso16  이분 탐색 (목표 226.40)
+      B=0.014142  전송 67.20     달성/목표=0.297
+      B=0.118920  전송 268.80    달성/목표=1.187
+      B=0.041009  전송 166.40    달성/목표=0.735
+      B=0.069834  전송 232.00    달성/목표=1.025
+      검증 3 반복 중위: 전송 232.00
+   -> iso16=0.069834  달성/목표=1.025
+   iso1   수요 226.40 <= 목표 226.40 — 상한 불필요 (B=1.0)
+== prosparse-7b : 절반 상한 (뉴런 쪽만)
+   half1  이분 탐색 (목표 113.20)
+      B=0.014142  전송 50.60     달성/목표=0.447
+      B=0.118920  전송 163.60    달성/목표=1.445
+      B=0.041009  전송 105.30    달성/목표=0.930
+      검증 3 반복 중위: 전송 101.20
+   -> half1=0.041009  달성/목표=0.894   <<< 10% 밖 — 동일전송 비교 불가
+== prosparse-7b : tau 이분 탐색 (|S|/K -> 1, |S| 는 tau 에 단조 감소)
+   tau=0.02000   |S|/K=1.474
+   tau=0.12649   |S|/K=0.608
+   tau=0.05030   |S|/K=0.630
+   tau=0.03172   |S|/K=0.719
+   tau=0.02519   |S|/K=0.745
+   tau=0.02245   |S|/K=0.838
+   tau=0.02119   |S|/K=0.828
+   -> tau=0.02245  |S|/K=0.838   <<< 10% 밖 — 상주 집합이 달라 오염
+
+== SparseQwen2 : 상한 없는 수요 (3 반복 중위, -n 512)
+   그룹 268.80   뉴런 344.10   뉴런/그룹 1.280  ->  목표 T=268.80 (더 적은 쪽)
+== SparseQwen2 : 동일전송 상한
+   iso16  수요 268.80 <= 목표 268.80 — 상한 불필요 (B=1.0)
+   iso1   이분 탐색 (목표 268.80)
+      B=0.014142  전송 127.30    달성/목표=0.474
+      B=0.118920  전송 341.20    달성/목표=1.269
+      B=0.041009  전송 258.70    달성/목표=0.962
+      검증 3 반복 중위: 전송 262.70
+   -> iso1=0.041009  달성/목표=0.977
+== SparseQwen2 : 절반 상한 (뉴런 쪽만)
+   half1  이분 탐색 (목표 134.40)
+      B=0.014142  전송 128.60    달성/목표=0.957
+      검증 3 반복 중위: 전송 127.30
+   -> half1=0.014142  달성/목표=0.947
+== SparseQwen2 : tau 이분 탐색 (|S|/K -> 1, |S| 는 tau 에 단조 감소)
+   tau=0.02000   |S|/K=1.095
+   tau=0.12649   |S|/K=0.887
+   tau=0.05030   |S|/K=1.020
+   tau=0.07976   |S|/K=0.965
+   tau=0.06334   |S|/K=0.986
+   -> tau=0.06334  |S|/K=0.986
+
+== opt-30b : 상한 없는 수요 (3 반복 중위, -n 512)
+   그룹 330.40   뉴런 673.30   뉴런/그룹 2.038  ->  목표 T=330.40 (더 적은 쪽)
+== opt-30b : 동일전송 상한
+   iso16  수요 330.40 <= 목표 330.40 — 상한 불필요 (B=1.0)
+   iso1   이분 탐색 (목표 330.40)
+      B=0.014142  전송 41.50     달성/목표=0.126
+      B=0.118920  전송 345.30    달성/목표=1.045
+      검증 3 반복 중위: 전송 345.40
+   -> iso1=0.118920  달성/목표=1.045
+== opt-30b : 절반 상한 (뉴런 쪽만)
+   half1  이분 탐색 (목표 165.20)
+      B=0.014142  전송 41.50     달성/목표=0.251
+      B=0.118920  전송 344.10    달성/목표=2.083
+      B=0.041009  전송 119.50    달성/목표=0.723
+      B=0.069834  전송 203.00    달성/목표=1.229
+      B=0.053515  전송 155.70    달성/목표=0.942
+      검증 3 반복 중위: 전송 155.70
+   -> half1=0.053515  달성/목표=0.942
+== opt-30b : tau 이분 탐색 (|S|/K -> 1, |S| 는 tau 에 단조 감소)
+   tau=0.02000   |S|/K=2.844
+   tau=0.12649   |S|/K=1.852
+   tau=0.31811   |S|/K=1.008
+   -> tau=0.31811  |S|/K=1.008
+
+== abl_cal.txt
+opt-6.7b d16 580.80
+opt-6.7b d1 162.40
+opt-6.7b T 162.40
+opt-6.7b iso16 0.024082
+opt-6.7b iso16rat 1.054
+opt-6.7b iso1 1.0
+opt-6.7b iso1rat 1.000
+opt-6.7b half1 0.014142
+opt-6.7b half1rat 0.926
+opt-6.7b tau 0.00079
+opt-6.7b taurat 1.008
+Bamboo d16 425.60
+Bamboo d1 716.60
+Bamboo T 425.60
+Bamboo iso16 1.0
+Bamboo iso16rat 1.000
+Bamboo iso1 0.061132
+Bamboo iso1rat 0.984
+Bamboo half1 0.031426
+Bamboo half1rat 1.022
+Bamboo tau 0.20059
+Bamboo taurat 1.012
+prosparse-7b d16 296.00
+prosparse-7b d1 226.40
+prosparse-7b T 226.40
+prosparse-7b iso16 0.069834
+prosparse-7b iso16rat 1.025
+prosparse-7b iso1 1.0
+prosparse-7b iso1rat 1.000
+prosparse-7b half1 0.041009
+prosparse-7b half1rat 0.894
+prosparse-7b tau 0.02245
+prosparse-7b taurat 0.838
+SparseQwen2 d16 268.80
+SparseQwen2 d1 344.10
+SparseQwen2 T 268.80
+SparseQwen2 iso16 1.0
+SparseQwen2 iso16rat 1.000
+SparseQwen2 iso1 0.041009
+SparseQwen2 iso1rat 0.977
+SparseQwen2 half1 0.014142
+SparseQwen2 half1rat 0.947
+SparseQwen2 tau 0.06334
+SparseQwen2 taurat 0.986
+opt-30b d16 330.40
+opt-30b d1 673.30
+opt-30b T 330.40
+opt-30b iso16 1.0
+opt-30b iso16rat 1.000
+opt-30b iso1 0.118920
+opt-30b iso1rat 1.045
+opt-30b half1 0.053515
+opt-30b half1rat 0.942
+opt-30b tau 0.31811
+opt-30b taurat 1.008
+######################## cal 완료  109 분
+
+######################## ts   2026-10-01 17:31:03
+모델     셀    예산 B         tau       rep  t/s        clocks
+opt-6.7b   Ga     one    1.0       0          1  54.18      1800,9501,73,132.98
+opt-6.7b   Na     one    1.0       0          1  46.80      1860,9501,73,136.44
+opt-6.7b   G      one    1.0       0          1  41.31      1860,9501,72,135.28
+opt-6.7b   N      one    1.0       0          1  47.93      1875,9501,70,133.95
+opt-6.7b   Giso   iso16  0.024082  0          1  53.28      1875,9501,71,134.55
+opt-6.7b   Niso   iso1   1.0       0          1  46.70      1875,9501,70,133.32
+opt-6.7b   Nhalf  half1  0.014142  0          1  47.98      1875,9501,70,133.66
+opt-6.7b   Nns    iso1   1.0       0.00079     1  52.77      1875,9501,70,132.98
+opt-6.7b   Nnsc   iso1   1.0       0.00079     1  53.94      1875,9501,70,133.57
+Bamboo     Ga     one    1.0       0          1  33.64      1875,9501,70,134.27
+Bamboo     Na     one    1.0       0          1  36.31      1800,9501,66,125.26
+Bamboo     G      one    1.0       0          1  33.63      1800,9501,72,133.96
+Bamboo     N      one    1.0       0          1  34.33      1800,9501,70,131.88
+Bamboo     Giso   iso16  1.0       0          1  33.69      1800,9501,73,133.88
+Bamboo     Niso   iso1   0.061132  0          1  38.81      1800,9501,71,133.29
+Bamboo     Nhalf  half1  0.031426  0          1  38.65      1800,9501,74,136.18
+Bamboo     Nns    iso1   0.061132  0.20059     1  42.39      1800,9501,74,135.27
+Bamboo     Nnsc   iso1   0.061132  0.20059     1  43.85      1800,9501,76,135.77
+prosparse-7b Ga     one    1.0       0          1  45.25      1800,9501,76,137.52
+prosparse-7b Na     one    1.0       0          1  37.94      1875,9501,73,135.95
+prosparse-7b G      one    1.0       0          1  30.28      1875,9501,72,135.06
+prosparse-7b N      one    1.0       0          1  32.62      1800,9501,64,111.69
+prosparse-7b Giso   iso16  0.069834  0          1  29.70      1800,9501,64,112.01
+prosparse-7b Niso   iso1   1.0       0          1  26.37      1800,9501,64,119.30
+prosparse-7b Nhalf  half1  0.041009  0          1  33.98      1800,9501,65,121.60
+prosparse-7b Nns    iso1   1.0       0.02245     1  34.45      1800,9501,64,112.34
+prosparse-7b Nnsc   iso1   1.0       0.02245     1  36.14      1800,9501,65,124.42
+SparseQwen2 Ga     one    1.0       0          1  48.88      1800,9501,64,121.44
+SparseQwen2 Na     one    1.0       0          1  36.13      1800,9501,66,124.44
+SparseQwen2 G      one    1.0       0          1  48.58      1800,9501,67,125.55
+SparseQwen2 N      one    1.0       0          1  37.52      1800,9501,67,126.65
+SparseQwen2 Giso   iso16  1.0       0          1  47.19      1800,9501,68,126.89
+SparseQwen2 Niso   iso1   0.041009  0          1  36.68      1800,9501,67,127.93
+SparseQwen2 Nhalf  half1  0.014142  0          1  38.70      1800,9501,67,128.40
+SparseQwen2 Nns    iso1   0.041009  0.06334     1  41.46      1800,9501,67,124.34
+SparseQwen2 Nnsc   iso1   0.041009  0.06334     1  41.98      1800,9501,68,129.24
+opt-30b    Ga     one    1.0       0          1  29.93      1800,9501,68,128.73
+opt-30b    Na     one    1.0       0          1  22.49      1800,9501,71,133.32
+opt-30b    G      one    1.0       0          1  30.52      1800,9501,71,131.92
+opt-30b    N      one    1.0       0          1  23.53      1800,9501,71,132.11
+opt-30b    Giso   iso16  1.0       0          1  30.12      1800,9501,72,132.45
+opt-30b    Niso   iso1   0.118920  0          1  25.01      1800,9501,72,132.46
+opt-30b    Nhalf  half1  0.053515  0          1  25.03      1800,9501,72,133.33
+opt-30b    Nns    iso1   0.118920  0.31811     1  30.27      1800,9501,70,129.86
+opt-30b    Nnsc   iso1   0.118920  0.31811     1  27.96      1800,9501,72,133.47
+opt-6.7b   Ga     one    1.0       0          2  55.48      1800,9501,73,136.16
+opt-6.7b   Na     one    1.0       0          2  46.87      1875,9501,71,134.53
+opt-6.7b   G      one    1.0       0          2  41.83      1875,9501,70,133.72
+opt-6.7b   N      one    1.0       0          2  47.25      1860,9501,73,136.42
+opt-6.7b   Giso   iso16  0.024082  0          2  53.25      1875,9501,71,134.40
+opt-6.7b   Niso   iso1   1.0       0          2  46.39      1860,9501,75,139.44
+opt-6.7b   Nhalf  half1  0.014142  0          2  47.85      1845,9501,77,140.32
+opt-6.7b   Nns    iso1   1.0       0.00079     2  53.16      1845,9501,77,140.70
+opt-6.7b   Nnsc   iso1   1.0       0.00079     2  54.04      1845,9501,78,141.25
+Bamboo     Ga     one    1.0       0          2  33.92      1845,9501,78,141.94
+Bamboo     Na     one    1.0       0          2  36.02      1800,9501,69,129.58
+Bamboo     G      one    1.0       0          2  33.42      1800,9501,74,134.86
+Bamboo     N      one    1.0       0          2  34.75      1800,9251,72,132.12
+Bamboo     Giso   iso16  1.0       0          2  30.25      1800,9501,75,136.05
+Bamboo     Niso   iso1   0.061132  0          2  38.79      1800,9501,73,134.34
+Bamboo     Nhalf  half1  0.031426  0          2  38.34      1800,9501,76,139.18
+Bamboo     Nns    iso1   0.061132  0.20059     2  42.45      1800,9251,76,138.87
+Bamboo     Nnsc   iso1   0.061132  0.20059     2  43.65      1800,9501,78,142.24
+prosparse-7b Ga     one    1.0       0          2  38.35      1800,9501,77,139.91
+prosparse-7b Na     one    1.0       0          2  38.89      1875,9501,72,135.11
+prosparse-7b G      one    1.0       0          2  38.96      1875,9501,72,136.53
+prosparse-7b N      one    1.0       0          2  35.52      1875,9501,71,134.22
+prosparse-7b Giso   iso16  0.069834  0          2  42.09      1860,9501,71,134.55
+prosparse-7b Niso   iso1   1.0       0          2  33.64      1875,9501,70,133.45
+prosparse-7b Nhalf  half1  0.041009  0          2  40.48      1875,9501,71,134.29
+prosparse-7b Nns    iso1   1.0       0.02245     2  41.99      1875,9501,70,132.81
+prosparse-7b Nnsc   iso1   1.0       0.02245     2  43.96      1875,9501,69,133.29
+SparseQwen2 Ga     one    1.0       0          2  47.90      1875,9501,70,133.72
+SparseQwen2 Na     one    1.0       0          2  35.93      1800,9501,68,127.74
+SparseQwen2 G      one    1.0       0          2  49.02      1800,9501,67,127.04
+SparseQwen2 N      one    1.0       0          2  36.05      1800,9501,67,127.96
+SparseQwen2 Giso   iso16  1.0       0          2  48.05      1800,9501,67,125.40
+SparseQwen2 Niso   iso1   0.041009  0          2  37.51      1800,9501,67,126.92
+SparseQwen2 Nhalf  half1  0.014142  0          2  38.69      1800,9501,68,125.58
+SparseQwen2 Nns    iso1   0.041009  0.06334     2  41.75      1800,9501,67,126.29
+SparseQwen2 Nnsc   iso1   0.041009  0.06334     2  41.82      1800,9501,67,126.90
+opt-30b    Ga     one    1.0       0          2  30.11      1800,9501,68,127.36
+opt-30b    Na     one    1.0       0          2  23.93      1800,9501,70,130.70
+opt-30b    G      one    1.0       0          2  27.73      1800,9501,72,132.99
+opt-30b    N      one    1.0       0          2  21.99      1800,9501,71,130.59
+opt-30b    Giso   iso16  1.0       0          2  31.70      1800,9501,72,130.62
+opt-30b    Niso   iso1   0.118920  0          2  23.77      1800,9501,72,134.31
+opt-30b    Nhalf  half1  0.053515  0          2  25.35      1800,9501,71,130.23
+opt-30b    Nns    iso1   0.118920  0.31811     2  26.90      1800,9501,71,132.35
+opt-30b    Nnsc   iso1   0.118920  0.31811     2  26.84      1800,9501,72,133.95
+opt-6.7b   Ga     one    1.0       0          3  54.85      1800,9501,72,132.21
+opt-6.7b   Na     one    1.0       0          3  46.72      1875,9501,71,134.40
+opt-6.7b   G      one    1.0       0          3  40.95      1860,9501,75,138.96
+opt-6.7b   N      one    1.0       0          3  46.79      1860,9501,75,139.12
+opt-6.7b   Giso   iso16  0.024082  0          3  54.03      1860,9501,77,142.34
+opt-6.7b   Niso   iso1   1.0       0          3  47.60      1860,9501,78,141.78
+opt-6.7b   Nhalf  half1  0.014142  0          3  46.94      1860,9501,78,142.21
+opt-6.7b   Nns    iso1   1.0       0.00079     3  52.60      1860,9501,78,142.49
+opt-6.7b   Nnsc   iso1   1.0       0.00079     3  54.86      1860,9501,79,143.87
+Bamboo     Ga     one    1.0       0          3  33.44      1860,9501,79,143.71
+Bamboo     Na     one    1.0       0          3  35.91      1800,9501,70,129.90
+Bamboo     G      one    1.0       0          3  33.19      1800,9501,71,134.71
+Bamboo     N      one    1.0       0          3  35.92      1800,9501,69,132.22
+Bamboo     Giso   iso16  1.0       0          3  33.38      1800,9501,69,131.46
+Bamboo     Niso   iso1   0.061132  0          3  38.46      1800,9501,70,133.81
+Bamboo     Nhalf  half1  0.031426  0          3  38.72      1800,9501,73,136.10
+Bamboo     Nns    iso1   0.061132  0.20059     3  42.58      1800,9501,75,136.93
+Bamboo     Nnsc   iso1   0.061132  0.20059     3  43.91      1800,9501,75,136.46
+prosparse-7b Ga     one    1.0       0          3  39.39      1800,9501,76,139.17
+prosparse-7b Na     one    1.0       0          3  36.68      1875,9501,71,134.86
+prosparse-7b G      one    1.0       0          3  36.97      1875,9501,71,134.79
+prosparse-7b N      one    1.0       0          3  34.34      1875,9501,69,131.74
+prosparse-7b Giso   iso16  0.069834  0          3  36.47      1875,9501,70,133.28
+prosparse-7b Niso   iso1   1.0       0          3  38.31      1875,9501,69,132.69
+prosparse-7b Nhalf  half1  0.041009  0          3  38.19      1875,9501,70,133.24
+prosparse-7b Nns    iso1   1.0       0.02245     3  41.98      1875,9501,69,132.84
+prosparse-7b Nnsc   iso1   1.0       0.02245     3  46.47      1875,9501,69,132.38
+SparseQwen2 Ga     one    1.0       0          3  48.16      1875,9501,69,132.25
+SparseQwen2 Na     one    1.0       0          3  35.40      1800,9501,67,124.98
+SparseQwen2 G      one    1.0       0          3  47.93      1800,9501,68,127.56
+SparseQwen2 N      one    1.0       0          3  35.69      1800,9501,67,126.30
+SparseQwen2 Giso   iso16  1.0       0          3  48.63      1800,9501,67,127.05
+SparseQwen2 Niso   iso1   0.041009  0          3  38.02      1800,9501,67,127.95
+SparseQwen2 Nhalf  half1  0.014142  0          3  37.66      1800,9501,67,125.14
+SparseQwen2 Nns    iso1   0.041009  0.06334     3  41.50      1800,9501,66,125.44
+SparseQwen2 Nnsc   iso1   0.041009  0.06334     3  41.26      1800,9501,67,125.31
+opt-30b    Ga     one    1.0       0          3  30.30      1800,9501,67,125.92
+opt-30b    Na     one    1.0       0          3  21.84      1800,9501,69,129.45
+opt-30b    G      one    1.0       0          3  30.31      1800,9501,70,129.17
+opt-30b    N      one    1.0       0          3  21.64      1800,9501,71,131.41
+opt-30b    Giso   iso16  1.0       0          3  29.23      1800,9501,71,130.80
+opt-30b    Niso   iso1   0.118920  0          3  25.82      1800,9501,71,131.59
+opt-30b    Nhalf  half1  0.053515  0          3  26.30      1800,9501,71,132.61
+opt-30b    Nns    iso1   0.118920  0.31811     3  26.25      1800,9501,71,131.77
+opt-30b    Nnsc   iso1   0.118920  0.31811     3  30.82      1800,9501,71,129.92
+
+== opt-6.7b   t/s 중위 (분모 Ga = 배포본 그룹)
+   Ga        54.85   /Ga 1.000
+   Na        46.80   /Ga 0.853
+   G         41.31   /Ga 0.753
+   N         47.25   /Ga 0.861
+   Giso      53.28   /Ga 0.971
+   Niso      46.70   /Ga 0.851
+   Nhalf     47.85   /Ga 0.872
+   Nns       52.77   /Ga 0.962
+   Nnsc      54.04   /Ga 0.985
+
+== Bamboo   t/s 중위 (분모 Ga = 배포본 그룹)
+   Ga        33.64   /Ga 1.000
+   Na        36.02   /Ga 1.071
+   G         33.42   /Ga 0.993
+   N         34.75   /Ga 1.033
+   Giso      33.38   /Ga 0.992
+   Niso      38.79   /Ga 1.153
+   Nhalf     38.65   /Ga 1.149
+   Nns       42.45   /Ga 1.262
+   Nnsc      43.85   /Ga 1.304
+
+== prosparse-7b   t/s 중위 (분모 Ga = 배포본 그룹)
+   Ga        39.39   /Ga 1.000
+   Na        37.94   /Ga 0.963
+   G         36.97   /Ga 0.939
+   N         34.34   /Ga 0.872
+   Giso      36.47   /Ga 0.926
+   Niso      33.64   /Ga 0.854
+   Nhalf     38.19   /Ga 0.970
+   Nns       41.98   /Ga 1.066
+   Nnsc      43.96   /Ga 1.116
+
+== SparseQwen2   t/s 중위 (분모 Ga = 배포본 그룹)
+   Ga        48.16   /Ga 1.000
+   Na        35.93   /Ga 0.746
+   G         48.58   /Ga 1.009
+   N         36.05   /Ga 0.749
+   Giso      48.05   /Ga 0.998
+   Niso      37.51   /Ga 0.779
+   Nhalf     38.69   /Ga 0.803
+   Nns       41.50   /Ga 0.862
+   Nnsc      41.82   /Ga 0.868
+
+== opt-30b   t/s 중위 (분모 Ga = 배포본 그룹)
+   Ga        30.11   /Ga 1.000
+   Na        22.49   /Ga 0.747
+   G         30.31   /Ga 1.007
+   N         21.99   /Ga 0.730
+   Giso      30.12   /Ga 1.000
+   Niso      25.01   /Ga 0.831
+   Nhalf     25.35   /Ga 0.842
+   Nns       26.90   /Ga 0.893
+   Nnsc      27.96   /Ga 0.929
+
+######################## ts 완료  253 분
+
+######################## plan   2026-10-01 21:44:03
+-- opt-6.7b / Ga   B=1.0 tau=0 alpha=0.05 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=1024) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.136 ms/토큰   (4241.2 ns/호출,  4.14 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.032 ms/토큰   ( 990.7 ns/호출, 짝  16.8 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.167 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    423.7 / K  423.7  (1.000 배)   load  74.2  evict  74.2  실행  16.8
+-- opt-6.7b / Na   B=1.0 tau=0 alpha=0.05 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=16384) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.705 ms/토큰   (22026.9 ns/호출,  1.34 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.135 ms/토큰   (4208.4 ns/호출, 짝 163.7 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.840 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6778.8 / K 6778.8  (1.000 배)   load 163.7  evict 163.7  실행 163.7
+-- opt-6.7b / G   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=1024) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.104 ms/토큰   (3249.1 ns/호출,  3.17 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.055 ms/토큰   (1704.9 ns/호출, 짝  37.4 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.159 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    423.7 / K  423.7  (1.000 배)   load  37.4  evict  37.4  실행  37.4
+-- opt-6.7b / N   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=16384) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.747 ms/토큰   (23346.4 ns/호출,  1.42 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.177 ms/토큰   (5533.2 ns/호출, 짝 194.7 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.924 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6778.8 / K 6778.8  (1.000 배)   load 194.7  evict 194.7  실행 194.7
+-- opt-6.7b / Giso   B=0.024082 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=1024) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.205 ms/토큰   (6394.2 ns/호출,  6.24 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.043 ms/토큰   (1352.3 ns/호출, 짝  10.7 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.248 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    423.7 / K  423.7  (1.000 배)   load 116.1  evict 116.1  실행  10.7
+-- opt-6.7b / Niso   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=16384) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.787 ms/토큰   (24609.2 ns/호출,  1.50 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.148 ms/토큰   (4632.9 ns/호출, 짝 163.1 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.936 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6778.8 / K 6778.8  (1.000 배)   load 163.1  evict 163.1  실행 163.1
+-- opt-6.7b / Nhalf   B=0.014142 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=16384) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    1.139 ms/토큰   (35605.5 ns/호출,  2.17 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.106 ms/토큰   (3303.7 ns/호출, 짝  72.2 개/호출)
+   kairox_dump_plan_profile:   합계        :    1.245 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6778.8 / K 6778.8  (1.000 배)   load 985.4  evict 985.4  실행  72.2
+-- opt-6.7b / Nns   B=1.0 tau=0.00079 alpha=0.00 nosort=1 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=16384) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    1.166 ms/토큰   (36428.2 ns/호출,  2.22 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.155 ms/토큰   (4830.1 ns/호출, 짝 136.5 개/호출)
+   kairox_dump_plan_profile:   합계        :    1.320 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6677.2 / K 6778.8  (0.985 배)   load 642.2  evict 743.8  실행 136.5
+-- opt-6.7b / Nnsc   B=1.0 tau=0.00079 alpha=0.00 nosort=1 compact=1
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=16384) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.033 ms/토큰   (1044.9 ns/호출,  0.06 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.140 ms/토큰   (4385.4 ns/호출, 짝 110.2 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.174 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6716.5 / K 6778.8  (0.991 배)   load 889.1  evict 951.4  실행 110.2
+-- Bamboo / Ga   B=1.0 tau=0 alpha=0.05 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=896) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.201 ms/토큰   (6295.2 ns/호출,  7.03 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.162 ms/토큰   (5056.2 ns/호출, 짝  25.0 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.363 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    431.6 / K  431.6  (1.000 배)   load  28.7  evict  28.7  실행  25.0
+-- Bamboo / Na   B=1.0 tau=0 alpha=0.05 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=14336) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    1.089 ms/토큰   (34040.9 ns/호출,  2.37 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.741 ms/토큰   (23147.7 ns/호출, 짝 727.3 개/호출)
+   kairox_dump_plan_profile:   합계        :    1.830 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6905.9 / K 6905.9  (1.000 배)   load 727.5  evict 727.5  실행 727.3
+-- Bamboo / G   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=896) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.187 ms/토큰   (5834.2 ns/호출,  6.51 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.143 ms/토큰   (4469.2 ns/호출, 짝  26.6 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.330 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    431.6 / K  431.6  (1.000 배)   load  26.6  evict  26.6  실행  26.6
+-- Bamboo / N   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=14336) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    1.945 ms/토큰   (60788.9 ns/호출,  4.24 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.664 ms/토큰   (20736.5 ns/호출, 짝 716.7 개/호출)
+   kairox_dump_plan_profile:   합계        :    2.609 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6905.9 / K 6905.9  (1.000 배)   load 716.7  evict 716.7  실행 716.7
+-- Bamboo / Giso   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=896) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.217 ms/토큰   (6772.4 ns/호출,  7.56 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.173 ms/토큰   (5397.4 ns/호출, 짝  26.7 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.389 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    431.6 / K  431.6  (1.000 배)   load  26.7  evict  26.7  실행  26.7
+-- Bamboo / Niso   B=0.061132 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=14336) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    1.372 ms/토큰   (42869.1 ns/호출,  2.99 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.667 ms/토큰   (20846.8 ns/호출, 짝 419.7 개/호출)
+   kairox_dump_plan_profile:   합계        :    2.039 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6905.9 / K 6905.9  (1.000 배)   load 1262.8  evict 1262.8  실행 419.7
+-- Bamboo / Nhalf   B=0.031426 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=14336) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    2.275 ms/토큰   (71088.6 ns/호출,  4.96 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.944 ms/토큰   (29496.6 ns/호출, 짝 217.5 개/호출)
+   kairox_dump_plan_profile:   합계        :    3.219 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6905.9 / K 6905.9  (1.000 배)   load 2136.8  evict 2136.8  실행 217.5
+-- Bamboo / Nns   B=0.061132 tau=0.20059 alpha=0.00 nosort=1 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=14336) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    2.658 ms/토큰   (83053.8 ns/호출,  5.79 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    1.033 ms/토큰   (32268.0 ns/호출, 짝 418.3 개/호출)
+   kairox_dump_plan_profile:   합계        :    3.690 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6984.1 / K 6905.9  (1.011 배)   load 1477.9  evict 1399.6  실행 418.3
+-- Bamboo / Nnsc   B=0.061132 tau=0.20059 alpha=0.00 nosort=1 compact=1
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=14336) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.167 ms/토큰   (5203.3 ns/호출,  0.36 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.959 ms/토큰   (29974.0 ns/호출, 짝 417.5 개/호출)
+   kairox_dump_plan_profile:   합계        :    1.126 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   6957.8 / K 6905.9  (1.008 배)   load 1461.3  evict 1409.4  실행 417.5
+-- prosparse-7b / Ga   B=1.0 tau=0 alpha=0.05 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=688) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.096 ms/토큰   (3007.2 ns/호출,  4.37 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.042 ms/토큰   (1302.9 ns/호출, 짝  12.8 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.138 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    269.9 / K  269.9  (1.000 배)   load  29.1  evict  29.1  실행  12.8
+-- prosparse-7b / Na   B=1.0 tau=0 alpha=0.05 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=11008) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.511 ms/토큰   (15966.7 ns/호출,  1.45 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.192 ms/토큰   (6014.0 ns/호출, 짝 199.1 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.703 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   4319.2 / K 4319.2  (1.000 배)   load 199.1  evict 199.1  실행 199.1
+-- prosparse-7b / G   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=688) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.079 ms/토큰   (2459.6 ns/호출,  3.58 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.052 ms/토큰   (1615.2 ns/호출, 짝  18.2 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.130 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    269.9 / K  269.9  (1.000 배)   load  18.2  evict  18.2  실행  18.2
+-- prosparse-7b / N   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=11008) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.594 ms/토큰   (18570.6 ns/호출,  1.69 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.286 ms/토큰   (8943.6 ns/호출, 짝 250.9 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.880 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   4319.2 / K 4319.2  (1.000 배)   load 250.9  evict 250.9  실행 250.9
+-- prosparse-7b / Giso   B=0.069834 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=688) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.094 ms/토큰   (2938.9 ns/호출,  4.27 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.050 ms/토큰   (1562.8 ns/호출, 짝  15.1 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.144 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    269.9 / K  269.9  (1.000 배)   load  26.4  evict  26.4  실행  15.1
+-- prosparse-7b / Niso   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=11008) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.615 ms/토큰   (19206.6 ns/호출,  1.74 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.214 ms/토큰   (6684.8 ns/호출, 짝 199.0 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.829 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   4319.2 / K 4319.2  (1.000 배)   load 199.0  evict 199.0  실행 199.0
+-- prosparse-7b / Nhalf   B=0.041009 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=11008) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.754 ms/토큰   (23550.2 ns/호출,  2.14 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.145 ms/토큰   (4532.0 ns/호출, 짝  86.8 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.899 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   4319.2 / K 4319.2  (1.000 배)   load 439.2  evict 439.2  실행  86.8
+-- prosparse-7b / Nns   B=1.0 tau=0.02245 alpha=0.00 nosort=1 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=11008) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    1.180 ms/토큰   (36859.9 ns/호출,  3.35 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.221 ms/토큰   (6915.2 ns/호출, 짝  93.6 개/호출)
+   kairox_dump_plan_profile:   합계        :    1.401 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   3278.3 / K 4319.2  (0.759 배)   load 748.4  evict 1789.3  실행  93.6
+-- prosparse-7b / Nnsc   B=1.0 tau=0.02245 alpha=0.00 nosort=1 compact=1
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=11008) ===
+   kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.061 ms/토큰   (1899.9 ns/호출,  0.17 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.232 ms/토큰   (7256.7 ns/호출, 짝  91.8 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.293 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   3199.4 / K 4319.2  (0.741 배)   load 716.8  evict 1836.6  실행  91.8
+-- SparseQwen2 / Ga   B=1.0 tau=0 alpha=0.05 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=592) ===
+   kairox_dump_plan_profile:   호출        : 14364 (513 스텝 x 28 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.094 ms/토큰   (3349.7 ns/호출,  5.66 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.048 ms/토큰   (1709.3 ns/호출, 짝   7.8 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.142 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    286.3 / K  286.3  (1.000 배)   load   9.1  evict   9.1  실행   7.8
+-- SparseQwen2 / Na   B=1.0 tau=0 alpha=0.05 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=18944) ===
+   kairox_dump_plan_profile:   호출        : 14364 (513 스텝 x 28 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.874 ms/토큰   (31227.6 ns/호출,  1.65 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.306 ms/토큰   (10912.2 ns/호출, 짝 353.9 개/호출)
+   kairox_dump_plan_profile:   합계        :    1.180 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   9162.8 / K 9162.8  (1.000 배)   load 353.9  evict 353.9  실행 353.9
+-- SparseQwen2 / G   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=592) ===
+   kairox_dump_plan_profile:   호출        : 14364 (513 스텝 x 28 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.082 ms/토큰   (2943.7 ns/호출,  4.97 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.051 ms/토큰   (1829.4 ns/호출, 짝   8.4 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.134 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    286.3 / K  286.3  (1.000 배)   load   8.4  evict   8.4  실행   8.4
+-- SparseQwen2 / N   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=18944) ===
+   kairox_dump_plan_profile:   호출        : 14364 (513 스텝 x 28 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.884 ms/토큰   (31588.7 ns/호출,  1.67 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.237 ms/토큰   (8472.0 ns/호출, 짝 351.8 개/호출)
+   kairox_dump_plan_profile:   합계        :    1.122 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   9162.8 / K 9162.8  (1.000 배)   load 351.8  evict 351.8  실행 351.8
+-- SparseQwen2 / Giso   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=592) ===
+   kairox_dump_plan_profile:   호출        : 14364 (513 스텝 x 28 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.077 ms/토큰   (2735.8 ns/호출,  4.62 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.045 ms/토큰   (1612.6 ns/호출, 짝   8.3 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.122 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    286.3 / K  286.3  (1.000 배)   load   8.3  evict   8.3  실행   8.3
+-- SparseQwen2 / Niso   B=0.041009 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=18944) ===
+   kairox_dump_plan_profile:   호출        : 14364 (513 스텝 x 28 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.944 ms/토큰   (33730.2 ns/호출,  1.78 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.242 ms/토큰   (8643.7 ns/호출, 짝 264.7 개/호출)
+   kairox_dump_plan_profile:   합계        :    1.186 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   9162.8 / K 9162.8  (1.000 배)   load 606.5  evict 606.5  실행 264.7
+-- SparseQwen2 / Nhalf   B=0.014142 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=18944) ===
+   kairox_dump_plan_profile:   호출        : 14364 (513 스텝 x 28 레이어)
+   kairox_dump_plan_profile:   스캔        :    1.520 ms/토큰   (54294.5 ns/호출,  2.87 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.278 ms/토큰   (9913.3 ns/호출, 짝 128.7 개/호출)
+   kairox_dump_plan_profile:   합계        :    1.798 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   9162.8 / K 9162.8  (1.000 배)   load 1547.0  evict 1547.0  실행 128.7
+-- SparseQwen2 / Nns   B=0.041009 tau=0.06334 alpha=0.00 nosort=1 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=18944) ===
+   kairox_dump_plan_profile:   호출        : 14364 (513 스텝 x 28 레이어)
+   kairox_dump_plan_profile:   스캔        :    1.143 ms/토큰   (40833.7 ns/호출,  2.16 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.284 ms/토큰   (10132.1 ns/호출, 짝 264.5 개/호출)
+   kairox_dump_plan_profile:   합계        :    1.427 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   9031.1 / K 9162.8  (0.986 배)   load 759.6  evict 891.2  실행 264.5
+-- SparseQwen2 / Nnsc   B=0.041009 tau=0.06334 alpha=0.00 nosort=1 compact=1
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=18944) ===
+   kairox_dump_plan_profile:   호출        : 14364 (513 스텝 x 28 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.038 ms/토큰   (1341.0 ns/호출,  0.07 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.324 ms/토큰   (11562.4 ns/호출, 짝 269.3 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.361 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   9057.6 / K 9162.8  (0.989 배)   load 758.6  evict 863.7  실행 269.3
+-- opt-30b / Ga   B=1.0 tau=0 alpha=0.05 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=1024) ===
+   kairox_dump_plan_profile:   호출        : 24624 (513 스텝 x 48 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.251 ms/토큰   (5232.8 ns/호출,  5.11 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.186 ms/토큰   (3883.0 ns/호출, 짝  11.6 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.438 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    103.6 / K  103.6  (1.000 배)   load  11.6  evict  11.6  실행  11.6
+-- opt-30b / Na   B=1.0 tau=0 alpha=0.05 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=28672) ===
+   kairox_dump_plan_profile:   호출        : 24624 (513 스텝 x 48 레이어)
+   kairox_dump_plan_profile:   스캔        :    2.731 ms/토큰   (56896.8 ns/호출,  1.98 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    1.055 ms/토큰   (21979.1 ns/호출, 짝 673.9 개/호출)
+   kairox_dump_plan_profile:   합계        :    3.786 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   2900.7 / K 2900.7  (1.000 배)   load 673.9  evict 673.9  실행 673.9
+-- opt-30b / G   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=1024) ===
+   kairox_dump_plan_profile:   호출        : 24624 (513 스텝 x 48 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.350 ms/토큰   (7281.8 ns/호출,  7.11 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.165 ms/토큰   (3434.2 ns/호출, 짝  11.7 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.514 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    103.6 / K  103.6  (1.000 배)   load  11.7  evict  11.7  실행  11.7
+-- opt-30b / N   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=28672) ===
+   kairox_dump_plan_profile:   호출        : 24624 (513 스텝 x 48 레이어)
+   kairox_dump_plan_profile:   스캔        :    2.703 ms/토큰   (56303.9 ns/호출,  1.96 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    1.131 ms/토큰   (23553.5 ns/호출, 짝 710.9 개/호출)
+   kairox_dump_plan_profile:   합계        :    3.833 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   2900.7 / K 2900.7  (1.000 배)   load 710.9  evict 710.9  실행 710.9
+-- opt-30b / Giso   B=1.0 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=1024) ===
+   kairox_dump_plan_profile:   호출        : 24624 (513 스텝 x 48 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.274 ms/토큰   (5700.4 ns/호출,  5.57 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.167 ms/토큰   (3470.9 ns/호출, 짝  10.9 개/호출)
+   kairox_dump_plan_profile:   합계        :    0.440 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :    103.6 / K  103.6  (1.000 배)   load  10.9  evict  10.9  실행  10.9
+-- opt-30b / Niso   B=0.118920 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=28672) ===
+   kairox_dump_plan_profile:   호출        : 24624 (513 스텝 x 48 레이어)
+   kairox_dump_plan_profile:   스캔        :    3.377 ms/토큰   (70362.4 ns/호출,  2.45 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.750 ms/토큰   (15618.4 ns/호출, 짝 345.5 개/호출)
+   kairox_dump_plan_profile:   합계        :    4.127 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   2900.7 / K 2900.7  (1.000 배)   load 1127.3  evict 1127.3  실행 345.5
+-- opt-30b / Nhalf   B=0.053515 tau=0 alpha=0.00 nosort=0 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=28672) ===
+   kairox_dump_plan_profile:   호출        : 24624 (513 스텝 x 48 레이어)
+   kairox_dump_plan_profile:   스캔        :    3.712 ms/토큰   (77326.6 ns/호출,  2.70 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.778 ms/토큰   (16207.3 ns/호출, 짝 155.7 개/호출)
+   kairox_dump_plan_profile:   합계        :    4.490 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   2900.7 / K 2900.7  (1.000 배)   load 1557.6  evict 1557.6  실행 155.7
+-- opt-30b / Nns   B=0.118920 tau=0.31811 alpha=0.00 nosort=1 compact=0
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=28672) ===
+   kairox_dump_plan_profile:   호출        : 24624 (513 스텝 x 48 레이어)
+   kairox_dump_plan_profile:   스캔        :    3.301 ms/토큰   (68762.2 ns/호출,  2.40 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    0.996 ms/토큰   (20758.9 ns/호출, 짝 343.3 개/호출)
+   kairox_dump_plan_profile:   합계        :    4.297 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   3377.4 / K 2900.7  (1.164 배)   load 1580.9  evict 1104.2  실행 343.3
+-- opt-30b / Nnsc   B=0.118920 tau=0.31811 alpha=0.00 nosort=1 compact=1
+   kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=28672) ===
+   kairox_dump_plan_profile:   호출        : 24624 (513 스텝 x 48 레이어)
+   kairox_dump_plan_profile:   스캔        :    0.282 ms/토큰   (5880.6 ns/호출,  0.21 ns/그룹)
+   kairox_dump_plan_profile:   적용        :    1.519 ms/토큰   (31644.0 ns/호출, 짝 343.3 개/호출)
+   kairox_dump_plan_profile:   합계        :    1.801 ms/토큰
+   kairox_dump_plan_profile:   선택 |S|    :   3423.1 / K 2900.7  (1.180 배)   load 1721.4  evict 1198.9  실행 343.3
+
+요약: python3 abl_sum.py
+######################## plan 완료  39 분
+
+######################## slope   2026-10-01 22:23:32
+== opt-6.7b / Niso   지연 주입 기울기
+      0 us  48.26 t/s
+    200 us  36.48 t/s
+    400 us  29.42 t/s
+== Bamboo / Niso   지연 주입 기울기
+      0 us  38.77 t/s
+    200 us  31.08 t/s
+    400 us  26.52 t/s
+== prosparse-7b / Niso   지연 주입 기울기
+      0 us  37.53 t/s
+    200 us  30.46 t/s
+    400 us  25.08 t/s
+== SparseQwen2 / Niso   지연 주입 기울기
+      0 us  38.28 t/s
+    200 us  31.70 t/s
+    400 us  26.50 t/s
+== opt-30b / Niso   지연 주입 기울기
+      0 us  25.17 t/s
+    200 us  20.30 t/s
+    400 us  16.44 t/s
+######################## slope 완료  28 분
+
+######################## nsys   2026-10-01 22:51:41
+예열 (버린다): opt-6.7b  1800,9501,71,129.77
+   -> 1890,9501,64,127.69
+-- nsys opt-6.7b / Ga   B=1.0 tau=0
+   짝 벽시계 46.83 t/s
+   prof/abl_opt-6.7b_Ga_cuda_gpu_kern_sum.csv
+   prof/abl_opt-6.7b_Ga_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-6.7b_Ga_cuda_gpu_mem_time_sum.csv
+-- nsys opt-6.7b / Na   B=1.0 tau=0
+   짝 벽시계 45.15 t/s
+   prof/abl_opt-6.7b_Na_cuda_gpu_kern_sum.csv
+   prof/abl_opt-6.7b_Na_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-6.7b_Na_cuda_gpu_mem_time_sum.csv
+-- nsys opt-6.7b / G   B=1.0 tau=0
+   짝 벽시계 39.71 t/s
+   prof/abl_opt-6.7b_G_cuda_gpu_kern_sum.csv
+   prof/abl_opt-6.7b_G_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-6.7b_G_cuda_gpu_mem_time_sum.csv
+-- nsys opt-6.7b / N   B=1.0 tau=0
+   짝 벽시계 45.74 t/s
+   prof/abl_opt-6.7b_N_cuda_gpu_kern_sum.csv
+   prof/abl_opt-6.7b_N_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-6.7b_N_cuda_gpu_mem_time_sum.csv
+-- nsys opt-6.7b / Giso   B=0.024082 tau=0
+   짝 벽시계 53.05 t/s
+   prof/abl_opt-6.7b_Giso_cuda_gpu_kern_sum.csv
+   prof/abl_opt-6.7b_Giso_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-6.7b_Giso_cuda_gpu_mem_time_sum.csv
+-- nsys opt-6.7b / Niso   B=1.0 tau=0
+   짝 벽시계 46.89 t/s
+   prof/abl_opt-6.7b_Niso_cuda_gpu_kern_sum.csv
+   prof/abl_opt-6.7b_Niso_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-6.7b_Niso_cuda_gpu_mem_time_sum.csv
+-- nsys opt-6.7b / Nhalf   B=0.014142 tau=0
+   짝 벽시계 46.07 t/s
+   prof/abl_opt-6.7b_Nhalf_cuda_gpu_kern_sum.csv
+   prof/abl_opt-6.7b_Nhalf_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-6.7b_Nhalf_cuda_gpu_mem_time_sum.csv
+-- nsys opt-6.7b / Nns   B=1.0 tau=0.00079
+   짝 벽시계 49.17 t/s
+   prof/abl_opt-6.7b_Nns_cuda_gpu_kern_sum.csv
+   prof/abl_opt-6.7b_Nns_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-6.7b_Nns_cuda_gpu_mem_time_sum.csv
+-- nsys opt-6.7b / Nnsc   B=1.0 tau=0.00079
+   짝 벽시계 53.36 t/s
+   prof/abl_opt-6.7b_Nnsc_cuda_gpu_kern_sum.csv
+   prof/abl_opt-6.7b_Nnsc_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-6.7b_Nnsc_cuda_gpu_mem_time_sum.csv
+-- nsys Bamboo / Ga   B=1.0 tau=0
+   짝 벽시계 28.06 t/s
+   prof/abl_Bamboo_Ga_cuda_gpu_kern_sum.csv
+   prof/abl_Bamboo_Ga_cuda_gpu_mem_size_sum.csv
+   prof/abl_Bamboo_Ga_cuda_gpu_mem_time_sum.csv
+-- nsys Bamboo / Na   B=1.0 tau=0
+   짝 벽시계 23.39 t/s
+   prof/abl_Bamboo_Na_cuda_gpu_kern_sum.csv
+   prof/abl_Bamboo_Na_cuda_gpu_mem_size_sum.csv
+   prof/abl_Bamboo_Na_cuda_gpu_mem_time_sum.csv
+-- nsys Bamboo / G   B=1.0 tau=0
+   짝 벽시계 28.81 t/s
+   prof/abl_Bamboo_G_cuda_gpu_kern_sum.csv
+   prof/abl_Bamboo_G_cuda_gpu_mem_size_sum.csv
+   prof/abl_Bamboo_G_cuda_gpu_mem_time_sum.csv
+-- nsys Bamboo / N   B=1.0 tau=0
+   짝 벽시계 23.42 t/s
+   prof/abl_Bamboo_N_cuda_gpu_kern_sum.csv
+   prof/abl_Bamboo_N_cuda_gpu_mem_size_sum.csv
+   prof/abl_Bamboo_N_cuda_gpu_mem_time_sum.csv
+-- nsys Bamboo / Giso   B=1.0 tau=0
+   짝 벽시계 28.78 t/s
+   prof/abl_Bamboo_Giso_cuda_gpu_kern_sum.csv
+   prof/abl_Bamboo_Giso_cuda_gpu_mem_size_sum.csv
+   prof/abl_Bamboo_Giso_cuda_gpu_mem_time_sum.csv
+-- nsys Bamboo / Niso   B=0.061132 tau=0
+   짝 벽시계 27.24 t/s
+   prof/abl_Bamboo_Niso_cuda_gpu_kern_sum.csv
+   prof/abl_Bamboo_Niso_cuda_gpu_mem_size_sum.csv
+   prof/abl_Bamboo_Niso_cuda_gpu_mem_time_sum.csv
+-- nsys Bamboo / Nhalf   B=0.031426 tau=0
+   짝 벽시계 26.22 t/s
+   prof/abl_Bamboo_Nhalf_cuda_gpu_kern_sum.csv
+   prof/abl_Bamboo_Nhalf_cuda_gpu_mem_size_sum.csv
+   prof/abl_Bamboo_Nhalf_cuda_gpu_mem_time_sum.csv
+-- nsys Bamboo / Nns   B=0.061132 tau=0.20059
+   짝 벽시계 28.36 t/s
+   prof/abl_Bamboo_Nns_cuda_gpu_kern_sum.csv
+   prof/abl_Bamboo_Nns_cuda_gpu_mem_size_sum.csv
+   prof/abl_Bamboo_Nns_cuda_gpu_mem_time_sum.csv
+-- nsys Bamboo / Nnsc   B=0.061132 tau=0.20059
+   짝 벽시계 28.91 t/s
+   prof/abl_Bamboo_Nnsc_cuda_gpu_kern_sum.csv
+   prof/abl_Bamboo_Nnsc_cuda_gpu_mem_size_sum.csv
+   prof/abl_Bamboo_Nnsc_cuda_gpu_mem_time_sum.csv
+-- nsys prosparse-7b / Ga   B=1.0 tau=0
+   짝 벽시계 39.72 t/s
+   prof/abl_prosparse-7b_Ga_cuda_gpu_kern_sum.csv
+   prof/abl_prosparse-7b_Ga_cuda_gpu_mem_size_sum.csv
+   prof/abl_prosparse-7b_Ga_cuda_gpu_mem_time_sum.csv
+-- nsys prosparse-7b / Na   B=1.0 tau=0
+   짝 벽시계 37.25 t/s
+   prof/abl_prosparse-7b_Na_cuda_gpu_kern_sum.csv
+   prof/abl_prosparse-7b_Na_cuda_gpu_mem_size_sum.csv
+   prof/abl_prosparse-7b_Na_cuda_gpu_mem_time_sum.csv
+-- nsys prosparse-7b / G   B=1.0 tau=0
+   짝 벽시계 38.83 t/s
+   prof/abl_prosparse-7b_G_cuda_gpu_kern_sum.csv
+   prof/abl_prosparse-7b_G_cuda_gpu_mem_size_sum.csv
+   prof/abl_prosparse-7b_G_cuda_gpu_mem_time_sum.csv
+-- nsys prosparse-7b / N   B=1.0 tau=0
+   짝 벽시계 34.92 t/s
+   prof/abl_prosparse-7b_N_cuda_gpu_kern_sum.csv
+   prof/abl_prosparse-7b_N_cuda_gpu_mem_size_sum.csv
+   prof/abl_prosparse-7b_N_cuda_gpu_mem_time_sum.csv
+-- nsys prosparse-7b / Giso   B=0.069834 tau=0
+   짝 벽시계 42.44 t/s
+   prof/abl_prosparse-7b_Giso_cuda_gpu_kern_sum.csv
+   prof/abl_prosparse-7b_Giso_cuda_gpu_mem_size_sum.csv
+   prof/abl_prosparse-7b_Giso_cuda_gpu_mem_time_sum.csv
+-- nsys prosparse-7b / Niso   B=1.0 tau=0
+   짝 벽시계 37.20 t/s
+   prof/abl_prosparse-7b_Niso_cuda_gpu_kern_sum.csv
+   prof/abl_prosparse-7b_Niso_cuda_gpu_mem_size_sum.csv
+   prof/abl_prosparse-7b_Niso_cuda_gpu_mem_time_sum.csv
+-- nsys prosparse-7b / Nhalf   B=0.041009 tau=0
+   짝 벽시계 39.80 t/s
+   prof/abl_prosparse-7b_Nhalf_cuda_gpu_kern_sum.csv
+   prof/abl_prosparse-7b_Nhalf_cuda_gpu_mem_size_sum.csv
+   prof/abl_prosparse-7b_Nhalf_cuda_gpu_mem_time_sum.csv
+-- nsys prosparse-7b / Nns   B=1.0 tau=0.02245
+   짝 벽시계 39.78 t/s
+   prof/abl_prosparse-7b_Nns_cuda_gpu_kern_sum.csv
+   prof/abl_prosparse-7b_Nns_cuda_gpu_mem_size_sum.csv
+   prof/abl_prosparse-7b_Nns_cuda_gpu_mem_time_sum.csv
+-- nsys prosparse-7b / Nnsc   B=1.0 tau=0.02245
+   짝 벽시계 41.77 t/s
+   prof/abl_prosparse-7b_Nnsc_cuda_gpu_kern_sum.csv
+   prof/abl_prosparse-7b_Nnsc_cuda_gpu_mem_size_sum.csv
+   prof/abl_prosparse-7b_Nnsc_cuda_gpu_mem_time_sum.csv
+-- nsys SparseQwen2 / Ga   B=1.0 tau=0
+   짝 벽시계 44.92 t/s
+   prof/abl_SparseQwen2_Ga_cuda_gpu_kern_sum.csv
+   prof/abl_SparseQwen2_Ga_cuda_gpu_mem_size_sum.csv
+   prof/abl_SparseQwen2_Ga_cuda_gpu_mem_time_sum.csv
+-- nsys SparseQwen2 / Na   B=1.0 tau=0
+   짝 벽시계 34.69 t/s
+   prof/abl_SparseQwen2_Na_cuda_gpu_kern_sum.csv
+   prof/abl_SparseQwen2_Na_cuda_gpu_mem_size_sum.csv
+   prof/abl_SparseQwen2_Na_cuda_gpu_mem_time_sum.csv
+-- nsys SparseQwen2 / G   B=1.0 tau=0
+   짝 벽시계 48.33 t/s
+   prof/abl_SparseQwen2_G_cuda_gpu_kern_sum.csv
+   prof/abl_SparseQwen2_G_cuda_gpu_mem_size_sum.csv
+   prof/abl_SparseQwen2_G_cuda_gpu_mem_time_sum.csv
+-- nsys SparseQwen2 / N   B=1.0 tau=0
+   짝 벽시계 35.67 t/s
+   prof/abl_SparseQwen2_N_cuda_gpu_kern_sum.csv
+   prof/abl_SparseQwen2_N_cuda_gpu_mem_size_sum.csv
+   prof/abl_SparseQwen2_N_cuda_gpu_mem_time_sum.csv
+-- nsys SparseQwen2 / Giso   B=1.0 tau=0
+   짝 벽시계 47.32 t/s
+   prof/abl_SparseQwen2_Giso_cuda_gpu_kern_sum.csv
+   prof/abl_SparseQwen2_Giso_cuda_gpu_mem_size_sum.csv
+   prof/abl_SparseQwen2_Giso_cuda_gpu_mem_time_sum.csv
+-- nsys SparseQwen2 / Niso   B=0.041009 tau=0
+   짝 벽시계 36.89 t/s
+   prof/abl_SparseQwen2_Niso_cuda_gpu_kern_sum.csv
+   prof/abl_SparseQwen2_Niso_cuda_gpu_mem_size_sum.csv
+   prof/abl_SparseQwen2_Niso_cuda_gpu_mem_time_sum.csv
+-- nsys SparseQwen2 / Nhalf   B=0.014142 tau=0
+   짝 벽시계 35.91 t/s
+   prof/abl_SparseQwen2_Nhalf_cuda_gpu_kern_sum.csv
+   prof/abl_SparseQwen2_Nhalf_cuda_gpu_mem_size_sum.csv
+   prof/abl_SparseQwen2_Nhalf_cuda_gpu_mem_time_sum.csv
+-- nsys SparseQwen2 / Nns   B=0.041009 tau=0.06334
+   짝 벽시계 39.92 t/s
+   prof/abl_SparseQwen2_Nns_cuda_gpu_kern_sum.csv
+   prof/abl_SparseQwen2_Nns_cuda_gpu_mem_size_sum.csv
+   prof/abl_SparseQwen2_Nns_cuda_gpu_mem_time_sum.csv
+-- nsys SparseQwen2 / Nnsc   B=0.041009 tau=0.06334
+   짝 벽시계 40.39 t/s
+   prof/abl_SparseQwen2_Nnsc_cuda_gpu_kern_sum.csv
+   prof/abl_SparseQwen2_Nnsc_cuda_gpu_mem_size_sum.csv
+   prof/abl_SparseQwen2_Nnsc_cuda_gpu_mem_time_sum.csv
+-- nsys opt-30b / Ga   B=1.0 tau=0
+   짝 벽시계 28.79 t/s
+   prof/abl_opt-30b_Ga_cuda_gpu_kern_sum.csv
+   prof/abl_opt-30b_Ga_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-30b_Ga_cuda_gpu_mem_time_sum.csv
+-- nsys opt-30b / Na   B=1.0 tau=0
+   짝 벽시계 22.10 t/s
+   prof/abl_opt-30b_Na_cuda_gpu_kern_sum.csv
+   prof/abl_opt-30b_Na_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-30b_Na_cuda_gpu_mem_time_sum.csv
+-- nsys opt-30b / G   B=1.0 tau=0
+   짝 벽시계 30.62 t/s
+   prof/abl_opt-30b_G_cuda_gpu_kern_sum.csv
+   prof/abl_opt-30b_G_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-30b_G_cuda_gpu_mem_time_sum.csv
+-- nsys opt-30b / N   B=1.0 tau=0
+   짝 벽시계 21.61 t/s
+   prof/abl_opt-30b_N_cuda_gpu_kern_sum.csv
+   prof/abl_opt-30b_N_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-30b_N_cuda_gpu_mem_time_sum.csv
+-- nsys opt-30b / Giso   B=1.0 tau=0
+   짝 벽시계 27.81 t/s
+   prof/abl_opt-30b_Giso_cuda_gpu_kern_sum.csv
+   prof/abl_opt-30b_Giso_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-30b_Giso_cuda_gpu_mem_time_sum.csv
+-- nsys opt-30b / Niso   B=0.118920 tau=0
+   짝 벽시계 22.88 t/s
+   prof/abl_opt-30b_Niso_cuda_gpu_kern_sum.csv
+   prof/abl_opt-30b_Niso_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-30b_Niso_cuda_gpu_mem_time_sum.csv
+-- nsys opt-30b / Nhalf   B=0.053515 tau=0
+   짝 벽시계 24.90 t/s
+   prof/abl_opt-30b_Nhalf_cuda_gpu_kern_sum.csv
+   prof/abl_opt-30b_Nhalf_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-30b_Nhalf_cuda_gpu_mem_time_sum.csv
+-- nsys opt-30b / Nns   B=0.118920 tau=0.31811
+   짝 벽시계 27.39 t/s
+   prof/abl_opt-30b_Nns_cuda_gpu_kern_sum.csv
+   prof/abl_opt-30b_Nns_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-30b_Nns_cuda_gpu_mem_time_sum.csv
+-- nsys opt-30b / Nnsc   B=0.118920 tau=0.31811
+   짝 벽시계 26.99 t/s
+   prof/abl_opt-30b_Nnsc_cuda_gpu_kern_sum.csv
+   prof/abl_opt-30b_Nnsc_cuda_gpu_mem_size_sum.csv
+   prof/abl_opt-30b_Nnsc_cuda_gpu_mem_time_sum.csv
+
+요약: python3 abl_sum.py
+######################## nsys 완료  104 분
+
+######################## 요약   2026-10-02 00:36:13
+
+================================================================================================
+Bamboo
+================================================================================================
+
+[1] 전송량과 선택 크기   (plan 패밀리 — 이 표가 안 맞으면 아래는 무효)
+셀       n_groups  실행짝/Ls   뉴런/Ls    vs T   |S|/K  스캔ms  적용ms 호스트ms
+    목표 T = 425.6 뉴런/Ls   (그룹 수요 425.6, 뉴런 수요 716.6)
+Ga            896       25.0     400.0   0.940   1.000   0.201   0.162    0.363
+Na         14,336      727.3     727.3   1.709   1.000   1.089   0.741    1.830
+G             896       26.6     425.6   1.000   1.000   0.187   0.143    0.330
+N          14,336      716.7     716.7   1.684   1.000   1.945   0.664    2.609
+Giso          896       26.7     427.2   1.004   1.000   0.217   0.173    0.390
+Niso       14,336      419.7     419.7   0.986   1.000   1.372   0.667    2.039
+Nhalf      14,336      217.5     217.5   0.511   1.000   2.275   0.944    3.219
+Nns        14,336      418.3     418.3   0.983   1.011   2.658   1.033    3.691
+Nnsc       14,336      417.5     417.5   0.981   1.008   0.167   0.959    1.126
+
+[2] 역할별 커널 시간  ms/토큰   (스텝수는 plan 로그에서 읽는다)
+셀        스텝     정렬   마스크     임계     압축     전송   본연산     기타    Σ커널     H2D   H2D MB
+Ga         513    0.000    0.023    0.009    0.000    0.000    2.955    0.296    3.283   6.969  107.521
+Na         513    0.389    0.194    0.010    0.000    6.175    5.077    0.172   12.017   1.446   20.664
+G          513    0.000    0.023    0.009    0.000    0.000    2.958    0.295    3.286   7.173  110.170
+N          513    0.389    0.194    0.010    0.000    6.129    5.083    0.173   11.977   1.471   20.664
+Giso       513    0.000    0.023    0.009    0.000    0.000    2.956    0.296    3.285   7.173  110.277
+Niso       513    0.390    0.194    0.010    0.000    3.793    4.283    0.171    8.840   1.285   21.054
+Nhalf      513    0.390    0.194    0.010    0.000    2.709    3.774    0.171    7.246   1.055   21.021
+Nns        513    0.000    0.000    0.010    0.000    3.881    4.278    0.198    8.366   1.285   21.060
+Nnsc       513    0.000    0.000    0.010    0.111    3.949    4.302    0.198    8.571   1.230   21.060
+
+[3] GPU 총 작업 대 벽시계   (짝 벽시계 = nsys 와 같은 인자의 맨런)
+    Σ커널+H2D 가 벽시계를 넘으면 커널과 복사가 겹쳐 돈 것이다 (점유율이 아니다)
+셀         Σ커널     H2D       합  짝ms/tok   합/벽    짝t/s    긴t/s   긴/Ga
+Ga         3.283   6.969   10.252    35.638     29%    28.06    33.64   1.000
+Na        12.017   1.446   13.463    42.753     31%    23.39    36.02   1.071
+G          3.286   7.173   10.459    34.710     30%    28.81    33.42   0.993
+N         11.977   1.471   13.448    42.699     31%    23.42    34.75   1.033
+Giso       3.285   7.173   10.457    34.746     30%    28.78    33.38   0.992
+Niso       8.840   1.285   10.125    36.711     28%    27.24    38.79   1.153
+Nhalf      7.246   1.055    8.301    38.139     22%    26.22    38.65   1.149
+Nns        8.366   1.285    9.651    35.261     27%    28.36    42.45   1.262
+Nnsc       8.571   1.230    9.800    34.590     28%    28.91    43.85   1.304
+
+[4] 한 변수 비교   Δms/토큰 (커널) 과 Δ벽시계
+비교            무엇이 바뀌나               정렬  마스크    임계    압축    전송  본연산    기타      ΣΔ   Δ벽시계     배
+Nns - Niso      정렬 제거                 -0.390  -0.194  -0.000  +0.000  +0.087  -0.004  +0.027  -0.474    -1.450  1.041
+Nnsc - Nns      호스트 스캔 제거          +0.000  +0.000  +0.000  +0.111  +0.068  +0.024  +0.001  +0.204    -0.671  1.019
+Niso - Giso     입도 (동일전송)           +0.390  +0.170  +0.000  +0.000  +3.793  +1.326  -0.125  +5.556    +1.964  0.946
+N - G           입도 (양쪽 상한 없음)     +0.389  +0.170  +0.000  +0.000  +6.129  +2.125  -0.123  +8.691    +7.988  0.813
+G - Ga          되먹임 제거 (그룹)        +0.000  +0.000  +0.000  +0.000  +0.000  +0.003  -0.000  +0.003    -0.928  1.027
+N - Niso        상한 해제                 -0.001  -0.000  +0.000  +0.000  +2.335  +0.800  +0.002  +3.137    +5.988  0.860
+Na - Ga         입도 (되먹임 켠 채)       +0.389  +0.170  +0.000  +0.000  +6.175  +2.123  -0.123  +8.734    +7.115  0.834
+Nhalf - Niso    상한 절반                 -0.000  -0.000  -0.000  +0.000  -1.085  -0.509  -0.000  -1.594    +1.428  0.963
+
+[5] 선택 기구 커널 상세   ms/토큰 (정렬+마스크+임계만)
+  Ga
+         0.023      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.009      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Na
+         0.333     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.194      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.008      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  G
+         0.023      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.009      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  N
+         0.333     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.194      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.008      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  Giso
+         0.023      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.009      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Niso
+         0.334     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.194      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.008      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  Nhalf
+         0.334     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.194      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.008      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  Nns
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Nnsc
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+
+================================================================================================
+SparseQwen2
+================================================================================================
+
+[1] 전송량과 선택 크기   (plan 패밀리 — 이 표가 안 맞으면 아래는 무효)
+셀       n_groups  실행짝/Ls   뉴런/Ls    vs T   |S|/K  스캔ms  적용ms 호스트ms
+    목표 T = 268.8 뉴런/Ls   (그룹 수요 268.8, 뉴런 수요 344.1)
+Ga            592        7.8     249.6   0.929   1.000   0.094   0.048    0.142
+Na         18,944      353.9     353.9   1.317   1.000   0.874   0.306    1.180
+G             592        8.4     268.8   1.000   1.000   0.082   0.051    0.133
+N          18,944      351.8     351.8   1.309   1.000   0.884   0.237    1.121
+Giso          592        8.3     265.6   0.988   1.000   0.077   0.045    0.122
+Niso       18,944      264.7     264.7   0.985   1.000   0.944   0.242    1.186
+Nhalf      18,944      128.7     128.7   0.479   1.000   1.520   0.278    1.798
+Nns        18,944      264.5     264.5   0.984   0.986   1.143   0.284    1.427
+Nnsc       18,944      269.3     269.3   1.002   0.989   0.038   0.324    0.362
+
+[2] 역할별 커널 시간  ms/토큰   (스텝수는 plan 로그에서 읽는다)
+셀        스텝     정렬   마스크     임계     압축     전송   본연산     기타    Σ커널     H2D   H2D MB
+Ga         513    0.000    0.018    0.008    0.000    0.000    3.015    0.252    3.293   3.537   65.591
+Na         513    0.347    0.221    0.009    0.000    2.568    3.868    0.161    7.173   1.181   21.143
+G          513    0.000    0.018    0.008    0.000    0.000    3.019    0.254    3.299   3.546   65.463
+N          513    0.347    0.221    0.009    0.000    2.543    3.866    0.162    7.149   1.255   21.142
+Giso       513    0.000    0.018    0.008    0.000    0.000    3.022    0.254    3.302   3.506   65.324
+Niso       513    0.348    0.222    0.009    0.000    1.822    3.645    0.161    6.207   1.144   21.448
+Nhalf      513    0.348    0.222    0.009    0.000    1.097    3.299    0.161    5.135   1.088   21.624
+Nns        513    0.000    0.000    0.009    0.000    1.827    3.629    0.186    5.650   1.188   21.655
+Nnsc       513    0.000    0.000    0.009    0.187    1.769    3.606    0.186    5.757   1.191   21.653
+
+[3] GPU 총 작업 대 벽시계   (짝 벽시계 = nsys 와 같은 인자의 맨런)
+    Σ커널+H2D 가 벽시계를 넘으면 커널과 복사가 겹쳐 돈 것이다 (점유율이 아니다)
+셀         Σ커널     H2D       합  짝ms/tok   합/벽    짝t/s    긴t/s   긴/Ga
+Ga         3.293   3.537    6.830    22.262     31%    44.92    48.16   1.000
+Na         7.173   1.181    8.354    28.827     29%    34.69    35.93   0.746
+G          3.299   3.546    6.845    20.691     33%    48.33    48.58   1.009
+N          7.149   1.255    8.404    28.035     30%    35.67    36.05   0.749
+Giso       3.302   3.506    6.808    21.133     32%    47.32    48.05   0.998
+Niso       6.207   1.144    7.351    27.108     27%    36.89    37.51   0.779
+Nhalf      5.135   1.088    6.223    27.847     22%    35.91    38.69   0.803
+Nns        5.650   1.188    6.838    25.050     27%    39.92    41.50   0.862
+Nnsc       5.757   1.191    6.948    24.759     28%    40.39    41.82   0.868
+
+[4] 한 변수 비교   Δms/토큰 (커널) 과 Δ벽시계
+비교            무엇이 바뀌나               정렬  마스크    임계    압축    전송  본연산    기타      ΣΔ   Δ벽시계     배
+Nns - Niso      정렬 제거                 -0.348  -0.222  +0.000  +0.000  +0.005  -0.017  +0.025  -0.557    -2.058  1.082
+Nnsc - Nns      호스트 스캔 제거          +0.000  +0.000  -0.000  +0.187  -0.058  -0.023  +0.000  +0.106    -0.291  1.012
+Niso - Giso     입도 (동일전송)           +0.348  +0.204  +0.000  +0.000  +1.822  +0.623  -0.093  +2.905    +5.975  0.780
+N - G           입도 (양쪽 상한 없음)     +0.347  +0.204  +0.000  +0.000  +2.543  +0.847  -0.092  +3.850    +7.344  0.738
+G - Ga          되먹임 제거 (그룹)        +0.000  +0.000  +0.000  +0.000  +0.000  +0.004  +0.001  +0.005    -1.571  1.076
+N - Niso        상한 해제                 -0.001  -0.000  -0.000  +0.000  +0.721  +0.221  +0.001  +0.942    +0.927  0.967
+Na - Ga         입도 (되먹임 켠 채)       +0.347  +0.204  +0.000  +0.000  +2.568  +0.853  -0.091  +3.880    +6.565  0.772
+Nhalf - Niso    상한 절반                 -0.000  +0.000  +0.000  +0.000  -0.725  -0.347  -0.000  -1.072    +0.740  0.973
+
+[5] 선택 기구 커널 상세   ms/토큰 (정렬+마스크+임계만)
+  Ga
+         0.018      3,612회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.008      3,612회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Na
+         0.297     14,448회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.221      3,612회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.025      3,612회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.010      3,612회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.009      3,612회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.008      3,612회  init_indices(int *, int, int)
+         0.007      3,612회  init_offsets(int *, int, int)
+  G
+         0.018      3,612회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.008      3,612회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  N
+         0.297     14,448회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.221      3,612회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.025      3,612회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.010      3,612회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.009      3,612회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.008      3,612회  init_indices(int *, int, int)
+         0.007      3,612회  init_offsets(int *, int, int)
+  Giso
+         0.018      3,612회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.008      3,612회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Niso
+         0.298     14,448회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.222      3,612회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.025      3,612회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.010      3,612회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.009      3,612회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.008      3,612회  init_indices(int *, int, int)
+         0.007      3,612회  init_offsets(int *, int, int)
+  Nhalf
+         0.298     14,448회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.222      3,612회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.025      3,612회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.010      3,612회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.009      3,612회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.008      3,612회  init_indices(int *, int, int)
+         0.007      3,612회  init_offsets(int *, int, int)
+  Nns
+         0.009      3,612회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Nnsc
+         0.009      3,612회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+
+================================================================================================
+opt-30b
+================================================================================================
+
+[1] 전송량과 선택 크기   (plan 패밀리 — 이 표가 안 맞으면 아래는 무효)
+셀       n_groups  실행짝/Ls   뉴런/Ls    vs T   |S|/K  스캔ms  적용ms 호스트ms
+    목표 T = 330.4 뉴런/Ls   (그룹 수요 330.4, 뉴런 수요 673.3)
+Ga          1,024       11.6     324.8   0.983   1.000   0.251   0.186    0.437
+Na         28,672      673.9     673.9   2.040   1.000   2.731   1.055    3.786
+G           1,024       11.7     327.6   0.992   1.000   0.350   0.165    0.515
+N          28,672      710.9     710.9   2.152   1.000   2.703   1.131    3.834
+Giso        1,024       10.9     305.2   0.924   1.000   0.274   0.167    0.441
+Niso       28,672      345.5     345.5   1.046   1.000   3.377   0.750    4.127
+Nhalf      28,672      155.7     155.7   0.471   1.000   3.712   0.778    4.490
+Nns        28,672      343.3     343.3   1.039   1.164   3.301   0.996    4.297
+Nnsc       28,672      343.3     343.3   1.039   1.180   0.282   1.519    1.801
+
+[2] 역할별 커널 시간  ms/토큰   (스텝수는 plan 로그에서 읽는다)
+셀        스텝     정렬   마스크     임계     압축     전송   본연산     기타    Σ커널     H2D   H2D MB
+Ga         513    0.000    0.033    0.014    0.000    0.000    3.594    0.738    4.379   3.231   51.554
+Na         513    0.599    0.477    0.015    0.000    4.415    4.532    0.604   10.642   1.094   18.312
+G          513    0.000    0.033    0.014    0.000    0.000    3.548    0.739    4.334   3.815   59.224
+N          513    0.598    0.477    0.015    0.000    4.242    4.522    0.604   10.459   1.241   18.305
+Giso       513    0.000    0.033    0.014    0.000    0.000    3.594    0.739    4.380   3.265   51.684
+Niso       513    0.599    0.477    0.015    0.000    2.279    4.119    0.598    8.087   1.229   19.614
+Nhalf      513    0.599    0.477    0.015    0.000    1.208    3.766    0.598    6.663   1.066   19.587
+Nns        513    0.000    0.000    0.015    0.000    2.364    4.116    0.639    7.134   1.168   19.622
+Nnsc       513    0.000    0.000    0.015    0.504    2.456    4.143    0.640    7.758   1.129   19.622
+
+[3] GPU 총 작업 대 벽시계   (짝 벽시계 = nsys 와 같은 인자의 맨런)
+    Σ커널+H2D 가 벽시계를 넘으면 커널과 복사가 겹쳐 돈 것이다 (점유율이 아니다)
+셀         Σ커널     H2D       합  짝ms/tok   합/벽    짝t/s    긴t/s   긴/Ga
+Ga         4.379   3.231    7.610    34.734     22%    28.79    30.11   1.000
+Na        10.642   1.094   11.737    45.249     26%    22.10    22.49   0.747
+G          4.334   3.815    8.149    32.658     25%    30.62    30.31   1.007
+N         10.459   1.241   11.700    46.275     25%    21.61    21.99   0.730
+Giso       4.380   3.265    7.644    35.958     21%    27.81    30.12   1.000
+Niso       8.087   1.229    9.316    43.706     21%    22.88    25.01   0.831
+Nhalf      6.663   1.066    7.730    40.161     19%    24.90    25.35   0.842
+Nns        7.134   1.168    8.302    36.510     23%    27.39    26.90   0.893
+Nnsc       7.758   1.129    8.887    37.051     24%    26.99    27.96   0.929
+
+[4] 한 변수 비교   Δms/토큰 (커널) 과 Δ벽시계
+비교            무엇이 바뀌나               정렬  마스크    임계    압축    전송  본연산    기타      ΣΔ   Δ벽시계     배
+Nns - Niso      정렬 제거                 -0.599  -0.477  -0.000  +0.000  +0.085  -0.002  +0.041  -0.953    -7.197  1.197
+Nnsc - Nns      호스트 스캔 제거          +0.000  +0.000  +0.000  +0.504  +0.092  +0.027  +0.001  +0.623    +0.541  0.985
+Niso - Giso     입도 (동일전송)           +0.599  +0.444  +0.001  +0.000  +2.279  +0.525  -0.141  +3.708    +7.748  0.823
+N - G           입도 (양쪽 상한 없음)     +0.598  +0.444  +0.001  +0.000  +4.242  +0.974  -0.134  +6.125   +13.616  0.706
+G - Ga          되먹임 제거 (그룹)        +0.000  +0.000  +0.000  +0.000  +0.000  -0.046  +0.001  -0.045    -2.076  1.064
+N - Niso        상한 해제                 -0.002  +0.000  -0.000  +0.000  +1.963  +0.404  +0.006  +2.372    +2.569  0.944
+Na - Ga         입도 (되먹임 켠 채)       +0.599  +0.444  +0.001  +0.000  +4.415  +0.938  -0.133  +6.264   +10.515  0.768
+Nhalf - Niso    상한 절반                 -0.000  -0.000  +0.000  +0.000  -1.070  -0.353  -0.000  -1.424    -3.546  1.088
+
+[5] 선택 기구 커널 상세   ms/토큰 (정렬+마스크+임계만)
+  Ga
+         0.033      6,192회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.014      6,192회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Na
+         0.514     24,768회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.477      6,192회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.042      6,192회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.017      6,192회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.015      6,192회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.013      6,192회  init_indices(int *, int, int)
+         0.013      6,192회  init_offsets(int *, int, int)
+  G
+         0.033      6,192회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.014      6,192회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  N
+         0.513     24,768회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.477      6,192회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.042      6,192회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.017      6,192회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.015      6,192회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.013      6,192회  init_indices(int *, int, int)
+         0.013      6,192회  init_offsets(int *, int, int)
+  Giso
+         0.033      6,192회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.014      6,192회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Niso
+         0.514     24,768회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.477      6,192회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.042      6,192회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.017      6,192회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.015      6,192회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.013      6,192회  init_indices(int *, int, int)
+         0.013      6,192회  init_offsets(int *, int, int)
+  Nhalf
+         0.514     24,768회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.477      6,192회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.042      6,192회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.017      6,192회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.015      6,192회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.013      6,192회  init_indices(int *, int, int)
+         0.013      6,192회  init_offsets(int *, int, int)
+  Nns
+         0.015      6,192회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Nnsc
+         0.015      6,192회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+
+================================================================================================
+opt-6.7b
+================================================================================================
+
+[1] 전송량과 선택 크기   (plan 패밀리 — 이 표가 안 맞으면 아래는 무효)
+셀       n_groups  실행짝/Ls   뉴런/Ls    vs T   |S|/K  스캔ms  적용ms 호스트ms
+    목표 T = 162.4 뉴런/Ls   (그룹 수요 580.8, 뉴런 수요 162.4)
+Ga          1,024       16.8     268.8   1.655   1.000   0.136   0.032    0.168
+Na         16,384      163.7     163.7   1.008   1.000   0.705   0.135    0.840
+G           1,024       37.4     598.4   3.685   1.000   0.104   0.055    0.159
+N          16,384      194.7     194.7   1.199   1.000   0.747   0.177    0.924
+Giso        1,024       10.7     171.2   1.054   1.000   0.205   0.043    0.248
+Niso       16,384      163.1     163.1   1.004   1.000   0.787   0.148    0.935
+Nhalf      16,384       72.2      72.2   0.445   1.000   1.139   0.106    1.245
+Nns        16,384      136.5     136.5   0.841   0.985   1.166   0.155    1.321
+Nnsc       16,384      110.2     110.2   0.679   0.991   0.033   0.140    0.173
+
+[2] 역할별 커널 시간  ms/토큰   (스텝수는 plan 로그에서 읽는다)
+셀        스텝     정렬   마스크     임계     압축     전송   본연산     기타    Σ커널     H2D   H2D MB
+Ga         513    0.000    0.024    0.010    0.000    0.000    2.858    0.368    3.260   4.051   75.912
+Na         513    0.396    0.214    0.010    0.000    1.131    3.333    0.240    5.324   1.046   18.698
+G          513    0.000    0.024    0.010    0.000    0.000    2.866    0.367    3.267   5.196   96.758
+N          513    0.393    0.214    0.010    0.000    0.953    3.253    0.239    5.061   0.915   18.694
+Giso       513    0.000    0.024    0.010    0.000    0.000    2.799    0.367    3.198   2.199   41.110
+Niso       513    0.393    0.214    0.010    0.000    0.951    3.254    0.239    5.059   0.955   18.694
+Nhalf      513    0.394    0.214    0.010    0.000    0.510    3.075    0.238    4.441   0.970   19.114
+Nns        513    0.000    0.000    0.010    0.000    0.775    3.170    0.265    4.220   0.983   19.217
+Nnsc       513    0.000    0.000    0.010    0.191    0.873    3.239    0.267    4.580   0.997   19.219
+
+[3] GPU 총 작업 대 벽시계   (짝 벽시계 = nsys 와 같은 인자의 맨런)
+    Σ커널+H2D 가 벽시계를 넘으면 커널과 복사가 겹쳐 돈 것이다 (점유율이 아니다)
+셀         Σ커널     H2D       합  짝ms/tok   합/벽    짝t/s    긴t/s   긴/Ga
+Ga         3.260   4.051    7.311    21.354     34%    46.83    54.85   1.000
+Na         5.324   1.046    6.370    22.148     29%    45.15    46.80   0.853
+G          3.267   5.196    8.462    25.183     34%    39.71    41.31   0.753
+N          5.061   0.915    5.976    21.863     27%    45.74    47.25   0.861
+Giso       3.198   2.199    5.397    18.850     29%    53.05    53.28   0.971
+Niso       5.059   0.955    6.015    21.327     28%    46.89    46.70   0.851
+Nhalf      4.441   0.970    5.410    21.706     25%    46.07    47.85   0.872
+Nns        4.220   0.983    5.203    20.338     26%    49.17    52.77   0.962
+Nnsc       4.580   0.997    5.577    18.741     30%    53.36    54.04   0.985
+
+[4] 한 변수 비교   Δms/토큰 (커널) 과 Δ벽시계
+비교            무엇이 바뀌나               정렬  마스크    임계    압축    전송  본연산    기타      ΣΔ   Δ벽시계     배
+Nns - Niso      정렬 제거                 -0.393  -0.214  -0.000  +0.000  -0.175  -0.084  +0.027  -0.839    -0.989  1.049
+Nnsc - Nns      호스트 스캔 제거          +0.000  +0.000  +0.000  +0.191  +0.098  +0.069  +0.001  +0.359    -1.597  1.085
+Niso - Giso     입도 (동일전송)           +0.393  +0.190  +0.000  +0.000  +0.951  +0.455  -0.128  +1.861    +2.476  0.884
+N - G           입도 (양쪽 상한 없음)     +0.393  +0.190  +0.000  +0.000  +0.953  +0.387  -0.129  +1.794    -3.320  1.152
+G - Ga          되먹임 제거 (그룹)        +0.000  -0.000  -0.000  +0.000  +0.000  +0.008  -0.001  +0.007    +3.829  0.848
+N - Niso        상한 해제                 +0.000  +0.000  -0.000  +0.000  +0.002  -0.001  +0.000  +0.001    +0.536  0.975
+Na - Ga         입도 (되먹임 켠 채)       +0.396  +0.191  +0.000  +0.000  +1.131  +0.475  -0.129  +2.064    +0.795  0.964
+Nhalf - Niso    상한 절반                 +0.001  +0.001  -0.000  +0.000  -0.441  -0.179  -0.001  -0.619    +0.380  0.983
+
+[5] 선택 기구 커널 상세   ms/토큰 (정렬+마스크+임계만)
+  Ga
+         0.024      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Na
+         0.340     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.214      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.009      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  G
+         0.024      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  N
+         0.337     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.214      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.008      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  Giso
+         0.024      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Niso
+         0.337     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.214      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.008      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  Nhalf
+         0.338     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.214      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.008      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  Nns
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Nnsc
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+
+================================================================================================
+prosparse-7b
+================================================================================================
+
+[1] 전송량과 선택 크기   (plan 패밀리 — 이 표가 안 맞으면 아래는 무효)
+셀       n_groups  실행짝/Ls   뉴런/Ls    vs T   |S|/K  스캔ms  적용ms 호스트ms
+    목표 T = 226.4 뉴런/Ls   (그룹 수요 296.0, 뉴런 수요 226.4)
+Ga            688       12.8     204.8   0.905   1.000   0.096   0.042    0.138
+Na         11,008      199.1     199.1   0.879   1.000   0.511   0.192    0.703
+G             688       18.2     291.2   1.286   1.000   0.079   0.052    0.131
+N          11,008      250.9     250.9   1.108   1.000   0.594   0.286    0.880
+Giso          688       15.1     241.6   1.067   1.000   0.094   0.050    0.144
+Niso       11,008      199.0     199.0   0.879   1.000   0.615   0.214    0.829
+Nhalf      11,008       86.8      86.8   0.383   1.000   0.754   0.145    0.899
+Nns        11,008       93.6      93.6   0.413   0.759   1.180   0.221    1.401
+Nnsc       11,008       91.8      91.8   0.405   0.741   0.061   0.232    0.293
+
+[2] 역할별 커널 시간  ms/토큰   (스텝수는 plan 로그에서 읽는다)
+셀        스텝     정렬   마스크     임계     압축     전송   본연산     기타    Σ커널     H2D   H2D MB
+Ga         513    0.000    0.020    0.009    0.000    0.000    2.919    0.311    3.259   4.839   82.104
+Na         513    0.385    0.146    0.010    0.000    2.553    3.747    0.183    7.025   1.173   19.593
+G          513    0.000    0.020    0.010    0.000    0.000    2.923    0.311    3.263   5.235   89.694
+N          513    0.384    0.147    0.010    0.000    2.533    3.757    0.183    7.014   1.106   19.593
+Giso       513    0.000    0.020    0.010    0.000    0.000    2.920    0.311    3.260   4.266   72.810
+Niso       513    0.384    0.146    0.010    0.000    2.530    3.744    0.183    6.997   1.147   19.593
+Nhalf      513    0.385    0.147    0.010    0.000    1.404    3.385    0.183    5.514   1.072   19.800
+Nns        513    0.000    0.000    0.010    0.000    1.459    3.371    0.210    5.050   1.070   19.917
+Nnsc       513    0.000    0.000    0.010    0.075    1.499    3.378    0.211    5.173   1.049   19.917
+
+[3] GPU 총 작업 대 벽시계   (짝 벽시계 = nsys 와 같은 인자의 맨런)
+    Σ커널+H2D 가 벽시계를 넘으면 커널과 복사가 겹쳐 돈 것이다 (점유율이 아니다)
+셀         Σ커널     H2D       합  짝ms/tok   합/벽    짝t/s    긴t/s   긴/Ga
+Ga         3.259   4.839    8.098    25.176     32%    39.72    39.39   1.000
+Na         7.025   1.173    8.198    26.846     31%    37.25    37.94   0.963
+G          3.263   5.235    8.498    25.753     33%    38.83    36.97   0.939
+N          7.014   1.106    8.120    28.637     28%    34.92    34.34   0.872
+Giso       3.260   4.266    7.526    23.563     32%    42.44    36.47   0.926
+Niso       6.997   1.147    8.144    26.882     30%    37.20    33.64   0.854
+Nhalf      5.514   1.072    6.585    25.126     26%    39.80    38.19   0.970
+Nns        5.050   1.070    6.120    25.138     24%    39.78    41.98   1.066
+Nnsc       5.173   1.049    6.223    23.941     26%    41.77    43.96   1.116
+
+[4] 한 변수 비교   Δms/토큰 (커널) 과 Δ벽시계
+비교            무엇이 바뀌나               정렬  마스크    임계    압축    전송  본연산    기타      ΣΔ   Δ벽시계     배
+Nns - Niso      정렬 제거                 -0.384  -0.146  +0.000  +0.000  -1.070  -0.373  +0.027  -1.947    -1.743  1.069
+Nnsc - Nns      호스트 스캔 제거          +0.000  +0.000  +0.000  +0.075  +0.040  +0.007  +0.001  +0.123    -1.198  1.050
+Niso - Giso     입도 (동일전송)           +0.384  +0.126  +0.000  +0.000  +2.530  +0.824  -0.128  +3.736    +3.319  0.877
+N - G           입도 (양쪽 상한 없음)     +0.384  +0.126  +0.000  +0.000  +2.533  +0.834  -0.128  +3.751    +2.884  0.899
+G - Ga          되먹임 제거 (그룹)        +0.000  +0.000  +0.000  +0.000  +0.000  +0.004  +0.001  +0.005    +0.577  0.978
+N - Niso        상한 해제                 -0.000  +0.000  -0.000  +0.000  +0.004  +0.013  -0.000  +0.017    +1.755  0.939
+Na - Ga         입도 (되먹임 켠 채)       +0.385  +0.126  +0.000  +0.000  +2.553  +0.829  -0.127  +3.766    +1.669  0.938
+Nhalf - Niso    상한 절반                 +0.001  +0.000  +0.000  +0.000  -1.125  -0.359  +0.000  -1.483    -1.756  1.070
+
+[5] 선택 기구 커널 상세   ms/토큰 (정렬+마스크+임계만)
+  Ga
+         0.020      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.009      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Na
+         0.329     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.146      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.009      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  G
+         0.020      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  N
+         0.328     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.147      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.009      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  Giso
+         0.020      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Niso
+         0.328     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.146      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.009      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  Nhalf
+         0.329     16,512회  void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_
+         0.147      4,128회  void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int,
+         0.028      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB
+         0.011      4,128회  void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+         0.009      4,128회  init_indices(int *, int, int)
+         0.008      4,128회  init_offsets(int *, int, int)
+  Nns
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+  Nnsc
+         0.010      4,128회  void shifted_step_kernel<float>(const T1 *, T1 *, int, float)
+끝 2026-10-02 00:36:13

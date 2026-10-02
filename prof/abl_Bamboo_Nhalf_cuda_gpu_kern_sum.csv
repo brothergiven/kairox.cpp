@@ -1,0 +1,52 @@
+Time (%),Total Time (ns),Instances,Avg (ns),Med (ns),Min (ns),Max (ns),StdDev (ns),Name
+37.4,1389568450,12384,112206.8,114608.5,46113,195585,28745.9,"void kairox_zerocopy_kernel<uint4>(const T1 *, T1 *, const int *, const int *, int, int)"
+17.3,641995829,4097,156699.0,154752.0,26720,233761,31788.0,"void axpy_vec_f_sparse<__nv_bfloat16, (int)32, (int)4>(const T1 *, const float *, const float *, const int *, float *, float, int, int, int)"
+10.3,384490112,12545,30648.9,14400.0,13888,381858,38657.2,"void mul_mat_vec_f<__nv_bfloat16, float, (int)1, (int)256, (bool)0, (bool)0>(const T1 *, const float *, const int *, ggml_cuda_mm_fusion_args_device, float *, int, uint3, int, int, int, uint3, int, int, int, uint3, int, int, int, int)"
+9.0,334654400,8194,40841.4,40224.0,8480,77249,11372.3,"void mul_mat_vec_f_sparse<__nv_bfloat16, float, (int)1, (int)256>(const T1 *, const float *, const float *, const int *, float *, float, int, int, int, int, int, int, int, int, int, int)"
+8.5,317300303,9472,33498.8,49760.0,7104,56576,20170.2,"void mul_mat_vec_f<__nv_bfloat16, float, (int)1, (int)256, (bool)1, (bool)0>(const T1 *, const float *, const int *, ggml_cuda_mm_fusion_args_device, float *, int, uint3, int, int, int, uint3, int, int, int, uint3, int, int, int, int)"
+4.6,171252571,16512,10371.4,10176.0,9664,11904,505.7,"void cub::CUB_200700_860_NS::DeviceRadixSortOnesweepKernel<cub::CUB_200700_860_NS::DeviceRadixSortPolicy<float, int, unsigned int>::Policy900, (bool)1, float, int, unsigned int, int, int, cub::CUB_200700_860_NS::detail::identity_decomposer_t>(T7 *, T7 *, T5 *, const T5 *, T3 *, const T3 *, T4 *, const T4 *, T6, int, int, T8)"
+2.7,99325457,4128,24061.4,24032.0,22209,26368,659.2,"void kairox_dfr_mask_f32_kernel<(bool)1>(const int *, int, int, int, int, float *, float *, float *)"
+1.4,50855444,1152,44145.4,44064.0,43616,46560,422.6,"void mul_mat_vec_f<__nv_bfloat16, float, (int)1, (int)160, (bool)1, (bool)0>(const T1 *, const float *, const int *, ggml_cuda_mm_fusion_args_device, float *, int, uint3, int, int, int, uint3, int, int, int, uint3, int, int, int, int)"
+1.2,45319600,1024,44257.4,41088.0,40705,51905,4137.9,"void mul_mat_vec_f<__nv_bfloat16, float, (int)1, (int)192, (bool)1, (bool)0>(const T1 *, const float *, const int *, ggml_cuda_mm_fusion_args_device, float *, int, uint3, int, int, int, uint3, int, int, int, uint3, int, int, int, int)"
+0.9,35272942,8385,4206.7,4256.0,3808,5889,217.3,"void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long, long, long, float, const float *, long, long, long, uint3, uint3, uint3, uint3, const float *, long, long, long, uint3, uint3, uint3, uint3)"
+0.9,33642639,512,65708.3,65600.0,65056,68929,607.4,"void mul_mat_vec_f<__nv_bfloat16, float, (int)1, (int)224, (bool)1, (bool)0>(const T1 *, const float *, const int *, ggml_cuda_mm_fusion_args_device, float *, int, uint3, int, int, int, uint3, int, int, int, uint3, int, int, int, int)"
+0.9,32898173,31,1061231.4,1022276.0,674115,1376517,175129.8,"void axpy_batch_f_sparse<__nv_bfloat16, (int)16, (int)8, (int)8>(const T1 *, const float *, const float *, const int *, float *, float, int, int, int, int)"
+0.8,28735918,4096,7015.6,7008.0,6624,7808,117.7,"void flash_attn_ext_f16<(int)128, (int)128, (int)2, (int)4, (bool)0, (bool)0>(const char *, const char *, const char *, const char *, const char *, const int *, float *, float2 *, float, float, float, float, unsigned int, float, int, uint3, int, int, int, int, int, int, int, int, int, int, int, long, int, int, long, int, int, int, int, int, long)"
+0.6,24036255,4097,5866.8,5856.0,5152,6624,153.0,"void kairox_dfr_update_f32_kernel<(bool)0, (bool)1, (int)0>(const float *, const float *, float *, int, int, int, int, float, float, float, float)"
+0.4,14414863,4128,3492.0,3488.0,3328,3936,59.2,"void cub::CUB_200700_860_NS::DeviceRadixSortHistogramKernel<cub::CUB_200700_860_NS::DeviceRadixSortPolicy<float, int, unsigned int>::Policy900, (bool)1, float, unsigned int, cub::CUB_200700_860_NS::detail::identity_decomposer_t>(T4 *, const T3 *, T4, int, int, T5)"
+0.3,11362349,4128,2752.5,2016.0,1792,36833,4479.5,"void k_bin_bcast<&op_add, float, float, float, const float *, const float *>(const T2 *, const T3 *, T4 *, int, int, int, uint3, uint3, uint3, uint3, uint3, int, int, int, int, int, int, int, int, int, int, int, T5...)"
+0.3,9646271,4128,2336.8,2112.0,1856,27840,2201.0,"kairox_add_add_relu_relu_mul_vec4_kernel(const float *, const float *, const float *, const float *, float *, long, uint3, long, long, long, long, long)"
+0.2,9255784,4128,2242.2,2208.0,2144,3040,108.0,"void rope_norm<(bool)1, (bool)0, float, __half>(const T3 *, T4 *, int, int, int, int, int, int, int, int, int, int, const int *, float, float, float, rope_corr_dims, float, const float *, const long *, int)"
+0.2,8587723,4128,2080.4,2048.0,1984,5024,253.4,"void rope_norm<(bool)1, (bool)0, float, float>(const T3 *, T4 *, int, int, int, int, int, int, int, int, int, int, const int *, float, float, float, rope_corr_dims, float, const float *, const long *, int)"
+0.2,7981184,4128,1933.4,1920.0,1856,2784,68.6,"void k_set_rows<float, long, __half>(const T1 *, const T2 *, T3 *, long, long, long, long, long, long, long, long, long, long, long, long, long, long, uint3, uint3, uint3, uint3, uint3)"
+0.2,7864036,4128,1905.0,1856.0,1760,5984,358.7,"void unary_op_kernel<&op_sigmoid, float>(const T2 *, T2 *, int)"
+0.2,6317147,4128,1530.3,1536.0,1504,1633,23.8,"void k_bin_bcast<&op_mul, float, float, float, const float *>(const T2 *, const T3 *, T4 *, int, int, int, uint3, uint3, uint3, uint3, uint3, int, int, int, int, int, int, int, int, int, int, int, T5...)"
+0.2,6183574,142,43546.3,59760.0,17440,105473,25081.9,ampere_bf16_s16816gemm_bf16_128x64_ldg8_f2f_stages_64x3_tn
+0.2,6014041,4096,1468.3,1472.0,1440,1600,25.3,"void flash_attn_stream_k_fixup_uniform<(int)128, (int)2, (int)4>(float *, const float2 *, int, int, int, int, int, int, uint3, uint3, uint3)"
+0.2,5692952,4128,1379.1,1376.0,1344,1472,20.9,"void cub::CUB_200700_860_NS::DeviceRadixSortExclusiveSumKernel<cub::CUB_200700_860_NS::DeviceRadixSortPolicy<float, int, unsigned int>::Policy900, unsigned int>(T2 *)"
+0.1,5257046,4096,1283.5,1184.0,1120,1728,163.6,"void unary_op_kernel<&op_relu, float>(const T2 *, T2 *, int)"
+0.1,4979054,4128,1206.2,1216.0,1184,1408,21.8,"void shifted_step_kernel<float>(const T1 *, T1 *, int, float)"
+0.1,4277639,4128,1036.2,1024.0,992,1152,20.8,"init_indices(int *, int, int)"
+0.1,4250736,4128,1029.7,1024.0,992,1120,18.5,"init_offsets(int *, int, int)"
+0.1,3861680,28,137917.1,139425.0,98304,157377,15474.3,void cutlass::Kernel2<cutlass_75_tensorop_bf16_s1688gemm_bf16_128x64_tn_align1>(T1::Params)
+0.1,2493773,31,80444.3,78977.0,78561,125473,8359.6,"void kairox_dfr_update_f32_kernel<(bool)1, (bool)1, (int)0>(const float *, const float *, float *, int, int, int, int, float, float, float, float)"
+0.0,1409765,12,117480.4,120401.0,106880,124032,6392.1,void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_bf16_64x64_64x6_tn_align2>(T1::Params)
+0.0,1256230,8,157028.8,157152.5,156065,157793,594.0,void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_bf16_128x128_64x3_tn_align2>(T1::Params)
+0.0,984235,254,3874.9,3328.0,1440,9984,2446.2,"void convert_unary<__nv_bfloat16, float>(const void *, T2 *, long, long, long, uint3, long, long, long)"
+0.0,884867,387,2286.5,2208.0,1984,2688,142.4,"void k_get_rows_float<float, float>(const T1 *, const int *, T2 *, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long)"
+0.0,847202,254,3335.4,3584.0,1440,4480,805.8,"void convert_unary<float, __nv_bfloat16>(const void *, T2 *, long, long, long, uint3, long, long, long)"
+0.0,739463,16,46216.4,43744.5,39585,53953,4963.5,ampere_bf16_s16816gemm_bf16_256x64_ldg8_f2f_tn
+0.0,640737,32,20023.0,20032.0,19488,20800,255.5,"void flash_attn_ext_f16<(int)128, (int)128, (int)16, (int)4, (bool)0, (bool)0>(const char *, const char *, const char *, const char *, const char *, const int *, float *, float2 *, float, float, float, float, unsigned int, float, int, uint3, int, int, int, int, int, int, int, int, int, int, int, long, int, int, long, int, int, int, int, int, long)"
+0.0,537537,192,2799.7,1472.0,1440,7104,2090.7,"void k_bin_bcast<&op_add, float, float, float, const float *>(const T2 *, const T3 *, T4 *, int, int, int, uint3, uint3, uint3, uint3, uint3, int, int, int, int, int, int, int, int, int, int, int, T5...)"
+0.0,484067,16,30254.2,32112.5,25280,32832,3187.3,void cutlass::Kernel2<cutlass_80_wmma_tensorop_bf16_s161616gemm_bf16_32x32_64x1_tn_align8>(T1::Params)
+0.0,425377,4,106344.3,106224.0,104833,108096,1407.0,void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_bf16_128x64_32x6_tn_align2>(T1::Params)
+0.0,248769,100,2487.7,2400.0,1824,6336,818.7,"void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, __nv_bfloat16, __nv_bfloat16, float, __nv_bfloat16, (bool)0, __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, (bool)1, (bool)0, (bool)0>(cublasLt::cublasSplitKParams<T6>, const T4 *, const T10 *, T9 *, T5 *, const T6 *, const T6 *, const T11 *, const T4 *, T11 *, void *, long, T6 *, int *, T6 *, T6 *, const T6 *, const T6 *, const T6 *, const T6 *, const T6 *)"
+0.0,186048,32,5814.0,5856.0,5632,5984,94.2,"void flash_attn_stream_k_fixup_uniform<(int)128, (int)16, (int)4>(float *, const float2 *, int, int, int, int, int, int, uint3, uint3, uint3)"
+0.0,172577,129,1337.8,1344.0,1312,1536,30.0,"void cpy_scalar_contiguous<float, __half>(const char *, char *, long)"
+0.0,172352,12,14362.7,14064.0,13760,15488,626.5,void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_64x64_32x6_tn_align8>(T1::Params)
+0.0,156673,28,5595.5,5824.0,3488,6816,906.0,"void scatter_rows_f32<(int)1>(const float *, float *, const int *, int, int, int)"
+0.0,128992,11,11726.5,11776.0,11296,12000,192.7,ampere_bf16_s16816gemm_bf16_64x64_ldg8_f2f_stages_64x6_tn
+0.0,110593,20,5529.6,5216.0,4544,6625,799.2,"void scatter_rows_f32<(int)4>(const float *, float *, const int *, int, int, int)"
+0.0,72672,5,14534.4,14560.0,14400,14592,79.7,ampere_bf16_s16816gemm_bf16_64x128_ldg8_f2f_stages_64x4_tn
+0.0,67968,14,4854.9,4880.0,3744,5824,672.6,"void scatter_rows_f32<(int)2>(const float *, float *, const int *, int, int, int)"
+0.0,65056,32,2033.0,1904.0,1632,2848,325.5,"kairox_add_relu_vec4_kernel(const float *, const float *, float *, long, uint3, long, long, long, unsigned int, unsigned int, uint3)"

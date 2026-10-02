@@ -1,0 +1,56 @@
+Time (%),Total Time (ns),Instances,Avg (ns),Med (ns),Min (ns),Max (ns),StdDev (ns),Name
+32.3,937498993,10824,86613.0,91746.0,4768,315144,50370.5,"void kairox_zerocopy_kernel<uint4>(const T1 *, T1 *, const int *, const int *, int, int)"
+18.0,522797664,3585,145829.2,161315.0,6784,338504,78178.5,"void axpy_vec_f_sparse<__nv_bfloat16, (int)32, (int)4>(const T1 *, const float *, const float *, const int *, float *, float, int, int, int)"
+16.6,482335389,19072,25290.2,11648.0,4416,89506,20566.6,"void mul_mat_vec_f<__nv_bfloat16, float, (int)1, (int)256, (bool)1, (bool)0>(const T1 *, const float *, const int *, ggml_cuda_mm_fusion_args_device, float *, int, uint3, int, int, int, uint3, int, int, int, uint3, int, int, int, int)"
+14.0,406283531,7170,56664.4,60417.0,3072,111267,30965.5,"void mul_mat_vec_f_sparse<__nv_bfloat16, float, (int)1, (int)256>(const T1 *, const float *, const float *, const int *, float *, float, int, int, int, int, int, int, int, int, int, int)"
+6.9,200342726,257,779543.7,1511908.0,38625,1528964,739256.1,"void mul_mat_vec_f<__nv_bfloat16, float, (int)1, (int)256, (bool)0, (bool)0>(const T1 *, const float *, const int *, ggml_cuda_mm_fusion_args_device, float *, int, uint3, int, int, int, uint3, int, int, int, uint3, int, int, int, int)"
+2.8,80245284,1152,69657.4,64705.0,53473,81538,8717.1,"void mul_mat_vec_f<__nv_bfloat16, float, (int)1, (int)192, (bool)1, (bool)0>(const T1 *, const float *, const int *, ggml_cuda_mm_fusion_args_device, float *, int, uint3, int, int, int, uint3, int, int, int, uint3, int, int, int, int)"
+1.2,34585070,27,1280928.5,1424418.0,24001,2098226,683917.9,"void axpy_batch_f_sparse<__nv_bfloat16, (int)16, (int)8, (int)8>(const T1 *, const float *, const float *, const int *, float *, float, int, int, int, int)"
+1.1,32543736,7353,4425.9,4352.0,3808,30465,533.0,"void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long, long, long, float, const float *, long, long, long, uint3, uint3, uint3, uint3, const float *, long, long, long, uint3, uint3, uint3, uint3)"
+1.0,29688119,512,57984.6,57826.0,57473,60257,581.1,"void mul_mat_vec_f<__nv_bfloat16, float, (int)1, (int)160, (bool)1, (bool)0>(const T1 *, const float *, const int *, ggml_cuda_mm_fusion_args_device, float *, int, uint3, int, int, int, uint3, int, int, int, uint3, int, int, int, int)"
+0.9,26360636,3584,7355.1,7328.0,7168,7873,100.7,"void flash_attn_ext_f16<(int)128, (int)128, (int)1, (int)8, (bool)0, (bool)0>(const char *, const char *, const char *, const char *, const char *, const int *, float *, float2 *, float, float, float, float, unsigned int, float, int, uint3, int, int, int, int, int, int, int, int, int, int, int, long, int, int, long, int, int, int, int, int, long)"
+0.9,25099904,3585,7001.4,7072.0,6336,8032,287.3,"void kairox_dfr_update_f32_kernel<(bool)0, (bool)1, (int)0>(const float *, const float *, float *, int, int, int, int, float, float, float, float)"
+0.6,16378116,640,25590.8,25505.0,25281,26849,301.8,"void mul_mat_vec_f<__nv_bfloat16, float, (int)1, (int)64, (bool)1, (bool)0>(const T1 *, const float *, const int *, ggml_cuda_mm_fusion_args_device, float *, int, uint3, int, int, int, uint3, int, int, int, uint3, int, int, int, int)"
+0.5,13114159,3612,3630.7,2048.0,1792,109122,6498.5,"void k_bin_bcast<&op_add, float, float, float, const float *, const float *>(const T2 *, const T3 *, T4 *, int, int, int, uint3, uint3, uint3, uint3, uint3, int, int, int, int, int, int, int, int, int, int, int, T5...)"
+0.4,11522773,7224,1595.1,1600.0,1536,1729,42.0,"void k_bin_bcast<&op_and, float, float, float, const float *>(const T2 *, const T3 *, T4 *, int, int, int, uint3, uint3, uint3, uint3, uint3, int, int, int, int, int, int, int, int, int, int, int, T5...)"
+0.3,9216767,3612,2551.7,2432.0,1536,38017,2845.8,"kairox_add_add_relu_relu_mul_vec4_kernel(const float *, const float *, const float *, const float *, float *, long, uint3, long, long, long, long, long)"
+0.3,7614565,3612,2108.1,2080.0,1984,4512,215.3,"void rope_neox<(bool)1, (bool)0, float, float>(const T3 *, T4 *, int, int, int, int, int, int, int, int, int, int, const int *, float, float, float, rope_corr_dims, float, const float *, const long *, int)"
+0.2,7106754,3612,1967.5,1952.0,1888,2528,56.8,"void k_bin_bcast<&op_xor, float, float, float, const float *>(const T2 *, const T3 *, T4 *, int, int, int, uint3, uint3, uint3, uint3, uint3, int, int, int, int, int, int, int, int, int, int, int, T5...)"
+0.2,6673457,3612,1847.6,1888.0,1184,9312,599.9,"void unary_op_kernel<&op_sigmoid, float>(const T2 *, T2 *, int)"
+0.2,6583049,3612,1822.5,1792.0,1728,2240,85.6,"void rope_neox<(bool)1, (bool)0, float, __half>(const T3 *, T4 *, int, int, int, int, int, int, int, int, int, int, const int *, float, float, float, rope_corr_dims, float, const float *, const long *, int)"
+0.2,6306352,3612,1745.9,1728.0,1696,2272,45.6,"void k_set_rows<float, long, __half>(const T1 *, const T2 *, T3 *, long, long, long, long, long, long, long, long, long, long, long, long, long, long, uint3, uint3, uint3, uint3, uint3)"
+0.2,5226959,3584,1458.4,1440.0,1408,1568,24.8,"void flash_attn_stream_k_fixup_uniform<(int)128, (int)1, (int)8>(float *, const float2 *, int, int, int, int, int, int, uint3, uint3, uint3)"
+0.2,4860936,3584,1356.3,1216.0,1120,1952,216.9,"void unary_op_kernel<&op_relu, float>(const T2 *, T2 *, int)"
+0.2,4458507,3612,1234.4,1216.0,1184,1952,34.7,"void shifted_step_kernel<float>(const T1 *, T1 *, int, float)"
+0.1,3929916,20,196495.8,193924.0,156100,242821,31226.3,void cutlass::Kernel2<cutlass_75_tensorop_bf16_s1688gemm_bf16_128x64_tn_align1>(T1::Params)
+0.1,2752289,27,101936.6,100003.0,98594,151587,9961.4,"void kairox_dfr_update_f32_kernel<(bool)1, (bool)1, (int)0>(const float *, const float *, float *, int, int, int, int, float, float, float, float)"
+0.1,2679262,61,43922.3,46017.0,17761,48737,7859.0,ampere_s16816gemm_bf16_128x64_ldg8_stages_64x3_tn
+0.1,2505149,21,119292.8,106434.0,69602,222918,50862.4,ampere_bf16_s16816gemm_bf16_256x64_ldg8_f2f_tn
+0.0,1143674,8,142959.3,143155.5,141795,143875,800.5,void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_bf16_64x64_64x6_tn_align2>(T1::Params)
+0.0,1047928,8,130991.0,86594.0,69122,273190,87855.1,ampere_bf16_s16816gemm_bf16_256x128_ldg8_f2f_stages_32x3_tn
+0.0,973404,222,4384.7,3072.0,1376,12961,3743.4,"void convert_unary<__nv_bfloat16, float>(const void *, T2 *, long, long, long, uint3, long, long, long)"
+0.0,903510,387,2334.7,2304.0,1920,2656,143.0,"void k_get_rows_float<float, float>(const T1 *, const int *, T2 *, long, long, long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long)"
+0.0,878800,268,3279.1,1984.0,1472,14721,3638.5,"void k_bin_bcast<&op_add, float, float, float, const float *>(const T2 *, const T3 *, T4 *, int, int, int, uint3, uint3, uint3, uint3, uint3, int, int, int, int, int, int, int, int, int, int, int, T5...)"
+0.0,703379,222,3168.4,3392.0,1344,4576,776.5,"void convert_unary<float, __nv_bfloat16>(const void *, T2 *, long, long, long, uint3, long, long, long)"
+0.0,663376,4,165844.0,165780.0,165124,166692,673.5,void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_bf16_128x64_64x3_tn_align2>(T1::Params)
+0.0,648847,61,10636.8,10816.0,10016,11520,403.1,ampere_bf16_s16816gemm_bf16_64x64_ldg8_f2f_stages_64x6_tn
+0.0,498031,28,17786.8,17728.5,17504,18400,230.7,"void flash_attn_ext_f16<(int)128, (int)128, (int)8, (int)8, (bool)0, (bool)0>(const char *, const char *, const char *, const char *, const char *, const int *, float *, float2 *, float, float, float, float, unsigned int, float, int, uint3, int, int, int, int, int, int, int, int, int, int, int, long, int, int, long, int, int, int, int, int, long)"
+0.0,279911,61,4588.7,4736.0,2944,4832,480.2,"void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, float, __nv_bfloat16, float, __nv_bfloat16, (bool)0, __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, (bool)1, (bool)0, (bool)0>(cublasLt::cublasSplitKParams<T6>, const T4 *, const T10 *, T9 *, T5 *, const T6 *, const T6 *, const T11 *, const T4 *, T11 *, void *, long, T6 *, int *, T6 *, T6 *, const T6 *, const T6 *, const T6 *, const T6 *, const T6 *)"
+0.0,208514,30,6950.5,8080.5,1632,12096,3896.2,"void scatter_rows_f32<(int)1>(const float *, float *, const int *, int, int, int)"
+0.0,199556,91,2192.9,1920.0,1856,6080,676.2,"void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, __nv_bfloat16, __nv_bfloat16, float, __nv_bfloat16, (bool)0, __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, (bool)1, (bool)0, (bool)0>(cublasLt::cublasSplitKParams<T6>, const T4 *, const T10 *, T9 *, T5 *, const T6 *, const T6 *, const T11 *, const T4 *, T11 *, void *, long, T6 *, int *, T6 *, T6 *, const T6 *, const T6 *, const T6 *, const T6 *, const T6 *)"
+0.0,190852,2,95426.0,95426.0,95170,95682,362.0,void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_128x64_64x3_tn_align8>(T1::Params)
+0.0,188229,2,94114.5,94114.5,93858,94371,362.7,void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_bf16_128x64_32x6_tn_align2>(T1::Params)
+0.0,181060,2,90530.0,90530.0,90434,90626,135.8,ampere_bf16_s16816gemm_bf16_128x64_ldg8_f2f_stages_64x3_tn
+0.0,176194,129,1365.8,1344.0,1344,1536,33.5,"void cpy_scalar_contiguous<float, __half>(const char *, char *, long)"
+0.0,148770,28,5313.2,5360.0,5088,5504,131.7,"void flash_attn_stream_k_fixup_uniform<(int)128, (int)8, (int)8>(float *, const float2 *, int, int, int, int, int, int, uint3, uint3, uint3)"
+0.0,120385,8,15048.1,15120.5,12672,17088,2080.9,void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_64x64_32x10_tn_align8>(T1::Params)
+0.0,118405,6,19734.2,19744.5,19297,20385,429.1,void cutlass::Kernel2<cutlass_75_tensorop_bf16_s1688gemm_bf16_64x128_tn_align1>(T1::Params)
+0.0,114053,14,8146.6,7744.5,5152,10528,1751.7,"void scatter_rows_f32<(int)2>(const float *, float *, const int *, int, int, int)"
+0.0,98146,5,19629.2,19584.0,19200,20001,295.1,ampere_bf16_s16816gemm_bf16_128x64_ldg8_f2f_tn
+0.0,90305,10,9030.5,9664.0,6368,11648,2173.9,"void scatter_rows_f32<(int)4>(const float *, float *, const int *, int, int, int)"
+0.0,84288,4,21072.0,21088.0,20800,21312,234.4,ampere_bf16_s16816gemm_bf16_128x64_ldg8_f2f_stages_32x6_tn
+0.0,69761,2,34880.5,34880.5,34625,35136,361.3,void cutlass::Kernel2<cutlass_75_tensorop_bf16_s1688gemm_bf16_128x128_tn_align1>(T1::Params)
+0.0,60800,28,2171.4,2320.0,1472,2688,391.0,"kairox_add_relu_vec4_kernel(const float *, const float *, float *, long, uint3, long, long, long, unsigned int, unsigned int, uint3)"
+0.0,29217,5,5843.4,5825.0,5760,5920,62.3,void cutlass::Kernel2<cutlass_80_tensorop_bf16_s16816gemm_relu_bf16_64x64_32x6_tn_align8>(T1::Params)
+0.0,15520,2,7760.0,7760.0,7584,7936,248.9,void cutlass::Kernel2<cutlass_75_tensorop_bf16_s1688gemm_bf16_64x64_tn_align1>(T1::Params)
+0.0,13569,1,13569.0,13569.0,13569,13569,0.0,ampere_bf16_s16816gemm_bf16_64x128_ldg8_f2f_stages_64x4_tn

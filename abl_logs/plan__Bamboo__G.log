@@ -1,0 +1,226 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 9872 MiB):
+  Device 0: NVIDIA GeForce RTX 3080, compute capability 8.6, VMM: yes, VRAM: 9872 MiB
+main: llama backend init
+main: load the model and apply lora adapter, if any
+llama_model_load_from_file_impl: using device CUDA0 (NVIDIA GeForce RTX 3080) (0000:07:00.0) - 9635 MiB free
+llama_model_loader: loaded meta data with 40 key-value pairs and 451 tensors from /root/SPIF-GGUF/Bamboo-base-v0_1.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = bamboo
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                      general.sampling.temp f32              = 0.000000
+llama_model_loader: - kv   3:                               general.name str              = Bamboo Base V0_1
+llama_model_loader: - kv   4:                         general.size_label str              = 9.5B
+llama_model_loader: - kv   5:                            general.license str              = apache-2.0
+llama_model_loader: - kv   6:                      general.dataset.count u32              = 3
+llama_model_loader: - kv   7:                     general.dataset.0.name str              = Falcon Refinedweb
+llama_model_loader: - kv   8:             general.dataset.0.organization str              = Tiiuae
+llama_model_loader: - kv   9:                 general.dataset.0.repo_url str              = https://huggingface.co/tiiuae/falcon-...
+llama_model_loader: - kv  10:                     general.dataset.1.name str              = Starcoderdata
+llama_model_loader: - kv  11:             general.dataset.1.organization str              = Bigcode
+llama_model_loader: - kv  12:                 general.dataset.1.repo_url str              = https://huggingface.co/bigcode/starco...
+llama_model_loader: - kv  13:                     general.dataset.2.name str              = Open Web Math
+llama_model_loader: - kv  14:             general.dataset.2.organization str              = Open Web Math
+llama_model_loader: - kv  15:                 general.dataset.2.repo_url str              = https://huggingface.co/open-web-math/...
+llama_model_loader: - kv  16:                          general.languages arr[str,1]       = ["en"]
+llama_model_loader: - kv  17:                         bamboo.block_count u32              = 32
+llama_model_loader: - kv  18:                      bamboo.context_length u32              = 32768
+llama_model_loader: - kv  19:                    bamboo.embedding_length u32              = 4096
+llama_model_loader: - kv  20:                 bamboo.feed_forward_length u32              = 14336
+llama_model_loader: - kv  21:                bamboo.attention.head_count u32              = 32
+llama_model_loader: - kv  22:             bamboo.attention.head_count_kv u32              = 8
+llama_model_loader: - kv  23:                      bamboo.rope.freq_base f32              = 10000.000000
+llama_model_loader: - kv  24:    bamboo.attention.layer_norm_rms_epsilon f32              = 0.000010
+llama_model_loader: - kv  25:                          general.file_type u32              = 32
+llama_model_loader: - kv  26:                          bamboo.vocab_size u32              = 32000
+llama_model_loader: - kv  27:                bamboo.rope.dimension_count u32              = 128
+llama_model_loader: - kv  28:                        predictor.low_ranks arr[i32,32]      = [512, 512, 512, 512, 512, 512, 640, 6...
+llama_model_loader: - kv  29:               general.quantization_version u32              = 2
+llama_model_loader: - kv  30:                       tokenizer.ggml.model str              = llama
+llama_model_loader: - kv  31:                         tokenizer.ggml.pre str              = default
+llama_model_loader: - kv  32:                      tokenizer.ggml.tokens arr[str,32000]   = ["<unk>", "<s>", "</s>", "<0x00>", "<...
+llama_model_loader: - kv  33:                      tokenizer.ggml.scores arr[f32,32000]   = [-1000.000000, -1000.000000, -1000.00...
+llama_model_loader: - kv  34:                  tokenizer.ggml.token_type arr[i32,32000]   = [3, 3, 3, 6, 6, 6, 6, 6, 6, 6, 6, 6, ...
+llama_model_loader: - kv  35:                tokenizer.ggml.bos_token_id u32              = 1
+llama_model_loader: - kv  36:                tokenizer.ggml.eos_token_id u32              = 2
+llama_model_loader: - kv  37:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  38:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  39:            tokenizer.ggml.add_space_prefix bool             = true
+llama_model_loader: - type  f32:  129 tensors
+llama_model_loader: - type bf16:  322 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = BF16
+print_info: file size   = 17.65 GiB (16.00 BPW) 
+load: 0 unused tokens
+load: printing all EOG tokens:
+load:   - 2 ('</s>')
+load: special tokens cache size = 3
+load: token to piece cache size = 0.1637 MB
+print_info: arch                  = bamboo
+print_info: vocab_only            = 0
+print_info: no_alloc              = 0
+print_info: n_ctx_train           = 32768
+print_info: n_embd                = 4096
+print_info: n_embd_inp            = 4096
+print_info: n_layer               = 32
+print_info: n_head                = 32
+print_info: n_head_kv             = 8
+print_info: n_rot                 = 128
+print_info: n_swa                 = 0
+print_info: is_swa_any            = 0
+print_info: n_embd_head_k         = 128
+print_info: n_embd_head_v         = 128
+print_info: n_gqa                 = 4
+print_info: n_embd_k_gqa          = 1024
+print_info: n_embd_v_gqa          = 1024
+print_info: f_norm_eps            = 0.0e+00
+print_info: f_norm_rms_eps        = 1.0e-05
+print_info: f_clamp_kqv           = 0.0e+00
+print_info: f_max_alibi_bias      = 0.0e+00
+print_info: f_logit_scale         = 0.0e+00
+print_info: f_attn_scale          = 0.0e+00
+print_info: n_ff                  = 14336
+print_info: n_expert              = 0
+print_info: n_expert_used         = 0
+print_info: n_expert_groups       = 0
+print_info: n_group_used          = 0
+print_info: causal attn           = 1
+print_info: pooling type          = -1
+print_info: rope type             = 0
+print_info: rope scaling          = linear
+print_info: freq_base_train       = 10000.0
+print_info: freq_scale_train      = 1
+print_info: n_ctx_orig_yarn       = 32768
+print_info: rope_yarn_log_mul     = 0.0000
+print_info: rope_finetuned        = unknown
+print_info: model type            = 7B
+print_info: model params          = 9.48 B
+print_info: general.name          = Bamboo Base V0_1
+print_info: vocab type            = SPM
+print_info: n_vocab               = 32000
+print_info: n_merges              = 0
+print_info: BOS token             = 1 '<s>'
+print_info: EOS token             = 2 '</s>'
+print_info: UNK token             = 0 '<unk>'
+print_info: LF token              = 13 '<0x0A>'
+print_info: EOG token             = 2 '</s>'
+print_info: max token length      = 48
+load_tensors: loading model tensors, this can take a while... (mmap = false, direct_io = false)
+model has unused tensor blk.0.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.1.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.2.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.3.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.4.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.5.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.6.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.7.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.8.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.9.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.10.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.11.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.12.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.13.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.14.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.15.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.16.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.17.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.18.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.19.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.20.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.21.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.22.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.23.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.24.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.25.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.26.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.27.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.28.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.29.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.30.ffn_down.weight (size = 117440512 bytes) -- ignoring
+model has unused tensor blk.31.ffn_down.weight (size = 117440512 bytes) -- ignoring
+load_tensors: offloading output layer to GPU
+load_tensors: offloading 31 repeating layers to GPU
+load_tensors: offloaded 33/33 layers to GPU
+load_tensors:        CUDA0 model buffer size =  3487.84 MiB
+load_tensors:    CUDA_Host model buffer size = 11002.00 MiB
+....................................................................................................
+common_init_result: added </s> logit bias = -inf
+llama_context: constructing llama_context
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 1024
+llama_context: n_ctx_seq     = 1024
+llama_context: n_batch       = 1024
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = false
+llama_context: freq_base     = 10000.0
+llama_context: freq_scale    = 1
+llama_context: n_ctx_seq (1024) < n_ctx_train (32768) -- the full capacity of the model will not be utilized
+llama_context:  CUDA_Host  output buffer size =     0.12 MiB
+llama_kv_cache:      CUDA0 KV buffer size =   128.00 MiB
+llama_kv_cache: size =  128.00 MiB (  1024 cells,  32 layers,  1/1 seqs), K (f16):   64.00 MiB, V (f16):   64.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 128
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 128
+sched_reserve: reserving ...
+sched_reserve: Flash Attention was auto, set to enabled
+sched_reserve: resolving fused Gated Delta Net support:
+sched_reserve: fused Gated Delta Net (autoregressive) enabled
+sched_reserve: fused Gated Delta Net (chunked) enabled
+sched_reserve:      CUDA0 compute buffer size =   307.01 MiB
+sched_reserve:  CUDA_Host compute buffer size =    18.01 MiB
+sched_reserve: graph nodes  = 1095
+sched_reserve: graph splits = 66
+sched_reserve: reserve took 17.16 ms, sched copies = 1
+kairox_cache_manager: [layer  0] offloaded 102.75 MiB and cached  4384 ( 30.58%) neurons to device
+kairox_cache_manager: [layer  1] offloaded 163.50 MiB and cached  6976 ( 48.66%) neurons to device
+kairox_cache_manager: [layer  2] offloaded 159.75 MiB and cached  6816 ( 47.54%) neurons to device
+kairox_cache_manager: [layer  3] offloaded 153.00 MiB and cached  6528 ( 45.54%) neurons to device
+kairox_cache_manager: [layer  4] offloaded 148.88 MiB and cached  6352 ( 44.31%) neurons to device
+kairox_cache_manager: [layer  5] offloaded 150.38 MiB and cached  6416 ( 44.75%) neurons to device
+kairox_cache_manager: [layer  6] offloaded 156.75 MiB and cached  6688 ( 46.65%) neurons to device
+kairox_cache_manager: [layer  7] offloaded 163.12 MiB and cached  6960 ( 48.55%) neurons to device
+kairox_cache_manager: [layer  8] offloaded 173.62 MiB and cached  7408 ( 51.67%) neurons to device
+kairox_cache_manager: [layer  9] offloaded 188.25 MiB and cached  8032 ( 56.03%) neurons to device
+kairox_cache_manager: [layer 10] offloaded 196.88 MiB and cached  8400 ( 58.59%) neurons to device
+kairox_cache_manager: [layer 11] offloaded 197.62 MiB and cached  8432 ( 58.82%) neurons to device
+kairox_cache_manager: [layer 12] offloaded 198.38 MiB and cached  8464 ( 59.04%) neurons to device
+kairox_cache_manager: [layer 13] offloaded 198.38 MiB and cached  8464 ( 59.04%) neurons to device
+kairox_cache_manager: [layer 14] offloaded 189.75 MiB and cached  8096 ( 56.47%) neurons to device
+kairox_cache_manager: [layer 15] offloaded 180.00 MiB and cached  7680 ( 53.57%) neurons to device
+kairox_cache_manager: [layer 16] offloaded 173.25 MiB and cached  7392 ( 51.56%) neurons to device
+kairox_cache_manager: [layer 17] offloaded 170.62 MiB and cached  7280 ( 50.78%) neurons to device
+kairox_cache_manager: [layer 18] offloaded 160.50 MiB and cached  6848 ( 47.77%) neurons to device
+kairox_cache_manager: [layer 19] offloaded 145.50 MiB and cached  6208 ( 43.30%) neurons to device
+kairox_cache_manager: [layer 20] offloaded 147.38 MiB and cached  6288 ( 43.86%) neurons to device
+kairox_cache_manager: [layer 21] offloaded 151.88 MiB and cached  6480 ( 45.20%) neurons to device
+kairox_cache_manager: [layer 22] offloaded 152.25 MiB and cached  6496 ( 45.31%) neurons to device
+kairox_cache_manager: [layer 23] offloaded 156.38 MiB and cached  6672 ( 46.54%) neurons to device
+kairox_cache_manager: [layer 24] offloaded 166.50 MiB and cached  7104 ( 49.55%) neurons to device
+kairox_cache_manager: [layer 25] offloaded 164.62 MiB and cached  7024 ( 49.00%) neurons to device
+kairox_cache_manager: [layer 26] offloaded 165.38 MiB and cached  7056 ( 49.22%) neurons to device
+kairox_cache_manager: [layer 27] offloaded 156.75 MiB and cached  6688 ( 46.65%) neurons to device
+kairox_cache_manager: [layer 28] offloaded 127.50 MiB and cached  5440 ( 37.95%) neurons to device
+kairox_cache_manager: [layer 29] offloaded 130.12 MiB and cached  5552 ( 38.73%) neurons to device
+kairox_cache_manager: [layer 30] offloaded 137.62 MiB and cached  5872 ( 40.96%) neurons to device
+kairox_cache_manager: [layer 31] offloaded 151.88 MiB and cached  6480 ( 45.20%) neurons to device
+kairox_cache_manager: the cache manager has totally 5180.19 MiB GPU memory footprint
+main: llama threadpool init, n_threads = 12
+
+system_info: n_threads = 12 (n_threads_batch = 12) / 24 | CUDA : ARCHS = 860 | PEER_MAX_BATCH_SIZE = 128 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+
+benchmark mode: warmup = 0, target measured runs = 1, prompts = 14339
+bench run attempt 1 (included 1/1): prompt = 63 tok, decode = 511 tok, prefill = 92.56 t/s, decode = 29.62 t/s
+
+benchmark summary:
+  target measured runs: 1
+  attempted runs:       1
+  filtered runs (decode < 16): 0
+  included runs:        1
+  prefill mean:   92.56 t/s
+  decode mean:    29.62 t/s
+kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=896) ===
+kairox_dump_plan_profile:   호출        : 16416 (513 스텝 x 32 레이어)
+kairox_dump_plan_profile:   스캔        :    0.187 ms/토큰   (5834.2 ns/호출,  6.51 ns/그룹)
+kairox_dump_plan_profile:   적용        :    0.143 ms/토큰   (4469.2 ns/호출, 짝  26.6 개/호출)
+kairox_dump_plan_profile:   합계        :    0.330 ms/토큰
+kairox_dump_plan_profile:   선택 |S|    :    431.6 / K  431.6  (1.000 배)   load  26.6  evict  26.6  실행  26.6

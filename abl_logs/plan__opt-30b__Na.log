@@ -1,0 +1,252 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 9872 MiB):
+  Device 0: NVIDIA GeForce RTX 3080, compute capability 8.6, VMM: yes, VRAM: 9872 MiB
+main: llama backend init
+main: load the model and apply lora adapter, if any
+llama_model_load_from_file_impl: using device CUDA0 (NVIDIA GeForce RTX 3080) (0000:07:00.0) - 9635 MiB free
+llama_model_loader: loaded meta data with 26 key-value pairs and 1012 tensors from /root/SPIF-GGUF/opt-30b-Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = opt
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                               general.name str              = Opt 30b
+llama_model_loader: - kv   3:                           general.basename str              = opt
+llama_model_loader: - kv   4:                         general.size_label str              = 30B
+llama_model_loader: - kv   5:                            general.license str              = other
+llama_model_loader: - kv   6:                               general.tags arr[str,2]       = ["text-generation", "opt"]
+llama_model_loader: - kv   7:                          general.languages arr[str,1]       = ["en"]
+llama_model_loader: - kv   8:                            opt.block_count u32              = 48
+llama_model_loader: - kv   9:                         opt.context_length u32              = 2048
+llama_model_loader: - kv  10:                       opt.embedding_length u32              = 7168
+llama_model_loader: - kv  11:                    opt.feed_forward_length u32              = 28672
+llama_model_loader: - kv  12:                   opt.attention.head_count u32              = 56
+llama_model_loader: - kv  13:           opt.attention.layer_norm_epsilon f32              = 0.000010
+llama_model_loader: - kv  14:                        predictor.low_ranks arr[i32,48]      = [128, 128, 128, 128, 128, 128, 128, 1...
+llama_model_loader: - kv  15:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  16:                         tokenizer.ggml.pre str              = gpt-2
+llama_model_loader: - kv  17:                      tokenizer.ggml.tokens arr[str,50272]   = ["<s>", "<pad>", "</s>", "<unk>", "."...
+llama_model_loader: - kv  18:                  tokenizer.ggml.token_type arr[i32,50272]   = [1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  19:                      tokenizer.ggml.merges arr[str,50000]   = ["Ġ t", "Ġ a", "h e", "i n", "r e",...
+llama_model_loader: - kv  20:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  21:                tokenizer.ggml.eos_token_id u32              = 2
+llama_model_loader: - kv  22:            tokenizer.ggml.padding_token_id u32              = 1
+llama_model_loader: - kv  23:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  24:               general.quantization_version u32              = 2
+llama_model_loader: - kv  25:                          general.file_type u32              = 15
+llama_model_loader: - type  f32:  579 tensors
+llama_model_loader: - type q5_0:   31 tensors
+llama_model_loader: - type q4_K:  329 tensors
+llama_model_loader: - type q6_K:   73 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = Q4_K - Medium
+print_info: file size   = 23.96 GiB (5.11 BPW) 
+load: control-looking token:  50260 '<|endoftext|>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: 0 unused tokens
+load: printing all EOG tokens:
+load:   - 2 ('</s>')
+load:   - 50260 ('<|endoftext|>')
+load: special tokens cache size = 3
+load: token to piece cache size = 0.3060 MB
+print_info: arch                  = opt
+print_info: vocab_only            = 0
+print_info: no_alloc              = 0
+print_info: n_ctx_train           = 2048
+print_info: n_embd                = 7168
+print_info: n_embd_inp            = 7168
+print_info: n_layer               = 48
+print_info: n_head                = 56
+print_info: n_head_kv             = 56
+print_info: n_rot                 = 128
+print_info: n_swa                 = 0
+print_info: is_swa_any            = 0
+print_info: n_embd_head_k         = 128
+print_info: n_embd_head_v         = 128
+print_info: n_gqa                 = 1
+print_info: n_embd_k_gqa          = 7168
+print_info: n_embd_v_gqa          = 7168
+print_info: f_norm_eps            = 1.0e-05
+print_info: f_norm_rms_eps        = 0.0e+00
+print_info: f_clamp_kqv           = 0.0e+00
+print_info: f_max_alibi_bias      = 0.0e+00
+print_info: f_logit_scale         = 0.0e+00
+print_info: f_attn_scale          = 0.0e+00
+print_info: n_ff                  = 28672
+print_info: n_expert              = 0
+print_info: n_expert_used         = 0
+print_info: n_expert_groups       = 0
+print_info: n_group_used          = 0
+print_info: causal attn           = 1
+print_info: pooling type          = -1
+print_info: rope type             = -1
+print_info: rope scaling          = linear
+print_info: freq_base_train       = 10000.0
+print_info: freq_scale_train      = 1
+print_info: n_ctx_orig_yarn       = 2048
+print_info: rope_yarn_log_mul     = 0.0000
+print_info: rope_finetuned        = unknown
+print_info: model type            = 30B
+print_info: model params          = 40.30 B
+print_info: general.name          = Opt 30b
+print_info: vocab type            = BPE
+print_info: n_vocab               = 50272
+print_info: n_merges              = 50000
+print_info: BOS token             = 2 '</s>'
+print_info: EOS token             = 2 '</s>'
+print_info: EOT token             = 50260 '<|endoftext|>'
+print_info: PAD token             = 1 '<pad>'
+print_info: LF token              = 50118 'Ċ'
+print_info: EOG token             = 2 '</s>'
+print_info: EOG token             = 50260 '<|endoftext|>'
+print_info: max token length      = 256
+load_tensors: loading model tensors, this can take a while... (mmap = false, direct_io = false)
+model has unused tensor blk.0.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.1.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.2.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.3.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.4.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.5.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.6.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.7.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.8.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.9.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.10.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.11.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.12.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.13.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.14.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.15.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.16.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.17.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.18.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.19.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.20.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.21.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.22.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.23.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.24.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.25.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.26.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.27.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.28.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.29.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.30.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.31.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.32.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.33.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.34.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.35.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.36.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.37.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.38.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.39.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.40.ffn_down.weight (size = 115605504 bytes) -- ignoring
+model has unused tensor blk.41.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.42.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.43.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.44.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.45.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.46.ffn_down.weight (size = 168591360 bytes) -- ignoring
+model has unused tensor blk.47.ffn_down.weight (size = 168591360 bytes) -- ignoring
+load_tensors: offloading output layer to GPU
+load_tensors: offloading 47 repeating layers to GPU
+load_tensors: offloaded 49/49 layers to GPU
+load_tensors:          CPU model buffer size =   281.91 MiB
+load_tensors:        CUDA0 model buffer size =  6177.39 MiB
+load_tensors:    CUDA_Host model buffer size = 11852.75 MiB
+...................................................................................................
+common_init_result: added </s> logit bias = -inf
+common_init_result: added <|endoftext|> logit bias = -inf
+llama_context: constructing llama_context
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 1024
+llama_context: n_ctx_seq     = 1024
+llama_context: n_batch       = 1024
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = false
+llama_context: freq_base     = 10000.0
+llama_context: freq_scale    = 1
+llama_context: n_ctx_seq (1024) < n_ctx_train (2048) -- the full capacity of the model will not be utilized
+llama_context:  CUDA_Host  output buffer size =     0.19 MiB
+llama_kv_cache:      CUDA0 KV buffer size =  1344.00 MiB
+llama_kv_cache: size = 1344.00 MiB (  1024 cells,  48 layers,  1/1 seqs), K (f16):  672.00 MiB, V (f16):  672.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 128
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 128
+sched_reserve: reserving ...
+sched_reserve: Flash Attention was auto, set to enabled
+sched_reserve: resolving fused Gated Delta Net support:
+sched_reserve: fused Gated Delta Net (autoregressive) enabled
+sched_reserve: fused Gated Delta Net (chunked) enabled
+sched_reserve:      CUDA0 compute buffer size =   383.04 MiB
+sched_reserve:  CUDA_Host compute buffer size =    44.01 MiB
+sched_reserve: graph nodes  = 1786
+sched_reserve: graph splits = 50 (with bs=512), 98 (with bs=1)
+sched_reserve: reserve took 30.64 ms, sched copies = 1
+kairox_cache_manager: [layer  0] offloaded   0.90 MiB and cached    95 (  0.33%) neurons to device
+kairox_cache_manager: [layer  1] offloaded   2.34 MiB and cached   248 (  0.86%) neurons to device
+kairox_cache_manager: [layer  2] offloaded   1.50 MiB and cached   159 (  0.55%) neurons to device
+kairox_cache_manager: [layer  3] offloaded   2.00 MiB and cached   212 (  0.74%) neurons to device
+kairox_cache_manager: [layer  4] offloaded   1.23 MiB and cached   130 (  0.45%) neurons to device
+kairox_cache_manager: [layer  5] offloaded   1.16 MiB and cached   123 (  0.43%) neurons to device
+kairox_cache_manager: [layer  6] offloaded   0.98 MiB and cached   128 (  0.45%) neurons to device
+kairox_cache_manager: [layer  7] offloaded   0.86 MiB and cached   112 (  0.39%) neurons to device
+kairox_cache_manager: [layer  8] offloaded   1.12 MiB and cached   118 (  0.41%) neurons to device
+kairox_cache_manager: [layer  9] offloaded   1.08 MiB and cached   140 (  0.49%) neurons to device
+kairox_cache_manager: [layer 10] offloaded   1.40 MiB and cached   182 (  0.63%) neurons to device
+kairox_cache_manager: [layer 11] offloaded   3.30 MiB and cached   349 (  1.22%) neurons to device
+kairox_cache_manager: [layer 12] offloaded   4.51 MiB and cached   587 (  2.05%) neurons to device
+kairox_cache_manager: [layer 13] offloaded   3.59 MiB and cached   467 (  1.63%) neurons to device
+kairox_cache_manager: [layer 14] offloaded   6.72 MiB and cached   711 (  2.48%) neurons to device
+kairox_cache_manager: [layer 15] offloaded   7.13 MiB and cached   927 (  3.23%) neurons to device
+kairox_cache_manager: [layer 16] offloaded   8.44 MiB and cached  1097 (  3.83%) neurons to device
+kairox_cache_manager: [layer 17] offloaded  11.59 MiB and cached  1226 (  4.28%) neurons to device
+kairox_cache_manager: [layer 18] offloaded  10.50 MiB and cached  1365 (  4.76%) neurons to device
+kairox_cache_manager: [layer 19] offloaded  11.66 MiB and cached  1516 (  5.29%) neurons to device
+kairox_cache_manager: [layer 20] offloaded  17.27 MiB and cached  1827 (  6.37%) neurons to device
+kairox_cache_manager: [layer 21] offloaded  16.45 MiB and cached  2139 (  7.46%) neurons to device
+kairox_cache_manager: [layer 22] offloaded  19.33 MiB and cached  2513 (  8.76%) neurons to device
+kairox_cache_manager: [layer 23] offloaded  27.08 MiB and cached  2865 (  9.99%) neurons to device
+kairox_cache_manager: [layer 24] offloaded  25.82 MiB and cached  3357 ( 11.71%) neurons to device
+kairox_cache_manager: [layer 25] offloaded  29.29 MiB and cached  3808 ( 13.28%) neurons to device
+kairox_cache_manager: [layer 26] offloaded  41.76 MiB and cached  4418 ( 15.41%) neurons to device
+kairox_cache_manager: [layer 27] offloaded  34.54 MiB and cached  4491 ( 15.66%) neurons to device
+kairox_cache_manager: [layer 28] offloaded  36.33 MiB and cached  4724 ( 16.48%) neurons to device
+kairox_cache_manager: [layer 29] offloaded  45.88 MiB and cached  4854 ( 16.93%) neurons to device
+kairox_cache_manager: [layer 30] offloaded  36.48 MiB and cached  4744 ( 16.55%) neurons to device
+kairox_cache_manager: [layer 31] offloaded  38.52 MiB and cached  5009 ( 17.47%) neurons to device
+kairox_cache_manager: [layer 32] offloaded  49.73 MiB and cached  5261 ( 18.35%) neurons to device
+kairox_cache_manager: [layer 33] offloaded  43.14 MiB and cached  5610 ( 19.57%) neurons to device
+kairox_cache_manager: [layer 34] offloaded  41.80 MiB and cached  5435 ( 18.96%) neurons to device
+kairox_cache_manager: [layer 35] offloaded  48.93 MiB and cached  5176 ( 18.05%) neurons to device
+kairox_cache_manager: [layer 36] offloaded  39.64 MiB and cached  5155 ( 17.98%) neurons to device
+kairox_cache_manager: [layer 37] offloaded  38.79 MiB and cached  5044 ( 17.59%) neurons to device
+kairox_cache_manager: [layer 38] offloaded  47.19 MiB and cached  4992 ( 17.41%) neurons to device
+kairox_cache_manager: [layer 39] offloaded  37.63 MiB and cached  4893 ( 17.07%) neurons to device
+kairox_cache_manager: [layer 40] offloaded  38.84 MiB and cached  5051 ( 17.62%) neurons to device
+kairox_cache_manager: [layer 41] offloaded  48.70 MiB and cached  5152 ( 17.97%) neurons to device
+kairox_cache_manager: [layer 42] offloaded  50.48 MiB and cached  5340 ( 18.62%) neurons to device
+kairox_cache_manager: [layer 43] offloaded  52.41 MiB and cached  5544 ( 19.34%) neurons to device
+kairox_cache_manager: [layer 44] offloaded  53.50 MiB and cached  5660 ( 19.74%) neurons to device
+kairox_cache_manager: [layer 45] offloaded  55.15 MiB and cached  5834 ( 20.35%) neurons to device
+kairox_cache_manager: [layer 46] offloaded  54.56 MiB and cached  5772 ( 20.13%) neurons to device
+kairox_cache_manager: [layer 47] offloaded  44.17 MiB and cached  4673 ( 16.30%) neurons to device
+kairox_cache_manager: the cache manager has totally 1206.47 MiB GPU memory footprint
+main: llama threadpool init, n_threads = 12
+
+system_info: n_threads = 12 (n_threads_batch = 12) / 24 | CUDA : ARCHS = 860 | PEER_MAX_BATCH_SIZE = 128 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+
+benchmark mode: warmup = 0, target measured runs = 1, prompts = 14339
+bench run attempt 1 (included 1/1): prompt = 59 tok, decode = 511 tok, prefill = 96.28 t/s, decode = 22.64 t/s
+
+benchmark summary:
+  target measured runs: 1
+  attempted runs:       1
+  filtered runs (decode < 16): 0
+  included runs:        1
+  prefill mean:   96.28 t/s
+  decode mean:    22.64 t/s
+kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=28672) ===
+kairox_dump_plan_profile:   호출        : 24624 (513 스텝 x 48 레이어)
+kairox_dump_plan_profile:   스캔        :    2.731 ms/토큰   (56896.8 ns/호출,  1.98 ns/그룹)
+kairox_dump_plan_profile:   적용        :    1.055 ms/토큰   (21979.1 ns/호출, 짝 673.9 개/호출)
+kairox_dump_plan_profile:   합계        :    3.786 ms/토큰
+kairox_dump_plan_profile:   선택 |S|    :   2900.7 / K 2900.7  (1.000 배)   load 673.9  evict 673.9  실행 673.9

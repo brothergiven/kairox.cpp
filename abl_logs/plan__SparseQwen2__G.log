@@ -1,0 +1,212 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 9872 MiB):
+  Device 0: NVIDIA GeForce RTX 3080, compute capability 8.6, VMM: yes, VRAM: 9872 MiB
+main: llama backend init
+main: load the model and apply lora adapter, if any
+llama_model_load_from_file_impl: using device CUDA0 (NVIDIA GeForce RTX 3080) (0000:07:00.0) - 9635 MiB free
+llama_model_loader: loaded meta data with 26 key-value pairs and 479 tensors from /root/SPIF-GGUF/SparseQwen2-7B.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = sparse-qwen2
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                               general.name str              = SparseQwen2 7B
+llama_model_loader: - kv   3:                           general.basename str              = SparseQwen2
+llama_model_loader: - kv   4:                         general.size_label str              = 7B
+llama_model_loader: - kv   5:                            general.license str              = apache-2.0
+llama_model_loader: - kv   6:                   sparse-qwen2.block_count u32              = 28
+llama_model_loader: - kv   7:                sparse-qwen2.context_length u32              = 131072
+llama_model_loader: - kv   8:              sparse-qwen2.embedding_length u32              = 3584
+llama_model_loader: - kv   9:           sparse-qwen2.feed_forward_length u32              = 18944
+llama_model_loader: - kv  10:          sparse-qwen2.attention.head_count u32              = 28
+llama_model_loader: - kv  11:       sparse-qwen2.attention.head_count_kv u32              = 4
+llama_model_loader: - kv  12:                sparse-qwen2.rope.freq_base f32              = 10000.000000
+llama_model_loader: - kv  13: sparse-qwen2.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  14:                          general.file_type u32              = 32
+llama_model_loader: - kv  15:                        predictor.low_ranks arr[i32,28]      = [640, 128, 128, 128, 128, 128, 512, 6...
+llama_model_loader: - kv  16:               general.quantization_version u32              = 2
+llama_model_loader: - kv  17:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  18:                         tokenizer.ggml.pre str              = qwen2
+llama_model_loader: - kv  19:                      tokenizer.ggml.tokens arr[str,152064]  = ["!", "\"", "#", "$", "%", "&", "'", ...
+llama_model_loader: - kv  20:                  tokenizer.ggml.token_type arr[i32,152064]  = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  21:                      tokenizer.ggml.merges arr[str,151387]  = ["Ġ Ġ", "ĠĠ ĠĠ", "i n", "Ġ t",...
+llama_model_loader: - kv  22:                tokenizer.ggml.eos_token_id u32              = 151645
+llama_model_loader: - kv  23:            tokenizer.ggml.padding_token_id u32              = 151643
+llama_model_loader: - kv  24:                tokenizer.ggml.bos_token_id u32              = 151643
+llama_model_loader: - kv  25:                    tokenizer.chat_template str              = {% if messages[0]['role'] == 'system'...
+llama_model_loader: - type  f32:  197 tensors
+llama_model_loader: - type bf16:  282 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = BF16
+print_info: file size   = 18.52 GiB (16.00 BPW) 
+load: 0 unused tokens
+load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+load: printing all EOG tokens:
+load:   - 128247 ('</s>')
+load:   - 151643 ('<|endoftext|>')
+load:   - 151645 ('<|im_end|>')
+load: special tokens cache size = 4
+load: token to piece cache size = 0.9308 MB
+print_info: arch                  = sparse-qwen2
+print_info: vocab_only            = 0
+print_info: no_alloc              = 0
+print_info: n_ctx_train           = 131072
+print_info: n_embd                = 3584
+print_info: n_embd_inp            = 3584
+print_info: n_layer               = 28
+print_info: n_head                = 28
+print_info: n_head_kv             = 4
+print_info: n_rot                 = 128
+print_info: n_swa                 = 0
+print_info: is_swa_any            = 0
+print_info: n_embd_head_k         = 128
+print_info: n_embd_head_v         = 128
+print_info: n_gqa                 = 7
+print_info: n_embd_k_gqa          = 512
+print_info: n_embd_v_gqa          = 512
+print_info: f_norm_eps            = 0.0e+00
+print_info: f_norm_rms_eps        = 1.0e-06
+print_info: f_clamp_kqv           = 0.0e+00
+print_info: f_max_alibi_bias      = 0.0e+00
+print_info: f_logit_scale         = 0.0e+00
+print_info: f_attn_scale          = 0.0e+00
+print_info: n_ff                  = 18944
+print_info: n_expert              = 0
+print_info: n_expert_used         = 0
+print_info: n_expert_groups       = 0
+print_info: n_group_used          = 0
+print_info: causal attn           = 1
+print_info: pooling type          = -1
+print_info: rope type             = 2
+print_info: rope scaling          = linear
+print_info: freq_base_train       = 10000.0
+print_info: freq_scale_train      = 1
+print_info: n_ctx_orig_yarn       = 131072
+print_info: rope_yarn_log_mul     = 0.0000
+print_info: rope_finetuned        = unknown
+print_info: model type            = 7B
+print_info: model params          = 9.94 B
+print_info: general.name          = SparseQwen2 7B
+print_info: vocab type            = BPE
+print_info: n_vocab               = 152064
+print_info: n_merges              = 151387
+print_info: BOS token             = 151643 '<|endoftext|>'
+print_info: EOS token             = 151645 '<|im_end|>'
+print_info: EOT token             = 151645 '<|im_end|>'
+print_info: PAD token             = 151643 '<|endoftext|>'
+print_info: LF token              = 198 'Ċ'
+print_info: EOG token             = 128247 '</s>'
+print_info: EOG token             = 151643 '<|endoftext|>'
+print_info: EOG token             = 151645 '<|im_end|>'
+print_info: max token length      = 256
+load_tensors: loading model tensors, this can take a while... (mmap = false, direct_io = false)
+model has unused tensor blk.0.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.1.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.2.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.3.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.4.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.5.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.6.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.7.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.8.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.9.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.10.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.11.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.12.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.13.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.14.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.15.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.16.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.17.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.18.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.19.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.20.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.21.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.22.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.23.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.24.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.25.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.26.ffn_down.weight (size = 135790592 bytes) -- ignoring
+model has unused tensor blk.27.ffn_down.weight (size = 135790592 bytes) -- ignoring
+load_tensors: offloading output layer to GPU
+load_tensors: offloading 27 repeating layers to GPU
+load_tensors: offloaded 29/29 layers to GPU
+load_tensors:        CUDA0 model buffer size =  3424.87 MiB
+load_tensors:    CUDA_Host model buffer size = 11917.50 MiB
+.........................................................................................
+common_init_result: added </s> logit bias = -inf
+common_init_result: added <|endoftext|> logit bias = -inf
+common_init_result: added <|im_end|> logit bias = -inf
+llama_context: constructing llama_context
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 1024
+llama_context: n_ctx_seq     = 1024
+llama_context: n_batch       = 1024
+llama_context: n_ubatch      = 512
+llama_context: causal_attn   = 1
+llama_context: flash_attn    = auto
+llama_context: kv_unified    = false
+llama_context: freq_base     = 10000.0
+llama_context: freq_scale    = 1
+llama_context: n_ctx_seq (1024) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+llama_context:  CUDA_Host  output buffer size =     0.58 MiB
+llama_kv_cache:      CUDA0 KV buffer size =    56.00 MiB
+llama_kv_cache: size =   56.00 MiB (  1024 cells,  28 layers,  1/1 seqs), K (f16):   28.00 MiB, V (f16):   28.00 MiB
+llama_kv_cache: attn_rot_k = 0, n_embd_head_k_all = 128
+llama_kv_cache: attn_rot_v = 0, n_embd_head_k_all = 128
+sched_reserve: reserving ...
+sched_reserve: Flash Attention was auto, set to enabled
+sched_reserve: resolving fused Gated Delta Net support:
+sched_reserve: fused Gated Delta Net (autoregressive) enabled
+sched_reserve: fused Gated Delta Net (chunked) enabled
+sched_reserve:      CUDA0 compute buffer size =   357.01 MiB
+sched_reserve:  CUDA_Host compute buffer size =    16.01 MiB
+sched_reserve: graph nodes  = 1043
+sched_reserve: graph splits = 58
+sched_reserve: reserve took 15.16 ms, sched copies = 1
+kairox_cache_manager: [layer  0] offloaded 169.31 MiB and cached  8256 ( 43.58%) neurons to device
+kairox_cache_manager: [layer  1] offloaded   2.62 MiB and cached   128 (  0.68%) neurons to device
+kairox_cache_manager: [layer  2] offloaded   7.22 MiB and cached   352 (  1.86%) neurons to device
+kairox_cache_manager: [layer  3] offloaded   5.91 MiB and cached   288 (  1.52%) neurons to device
+kairox_cache_manager: [layer  4] offloaded  24.28 MiB and cached  1184 (  6.25%) neurons to device
+kairox_cache_manager: [layer  5] offloaded  11.16 MiB and cached   544 (  2.87%) neurons to device
+kairox_cache_manager: [layer  6] offloaded 190.31 MiB and cached  9280 ( 48.99%) neurons to device
+kairox_cache_manager: [layer  7] offloaded 220.50 MiB and cached 10752 ( 56.76%) neurons to device
+kairox_cache_manager: [layer  8] offloaded 234.94 MiB and cached 11456 ( 60.47%) neurons to device
+kairox_cache_manager: [layer  9] offloaded 108.28 MiB and cached  5280 ( 27.87%) neurons to device
+kairox_cache_manager: [layer 10] offloaded 219.19 MiB and cached 10688 ( 56.42%) neurons to device
+kairox_cache_manager: [layer 11] offloaded 265.78 MiB and cached 12960 ( 68.41%) neurons to device
+kairox_cache_manager: [layer 12] offloaded 284.81 MiB and cached 13888 ( 73.31%) neurons to device
+kairox_cache_manager: [layer 13] offloaded 276.94 MiB and cached 13504 ( 71.28%) neurons to device
+kairox_cache_manager: [layer 14] offloaded 287.44 MiB and cached 14016 ( 73.99%) neurons to device
+kairox_cache_manager: [layer 15] offloaded 305.16 MiB and cached 14880 ( 78.55%) neurons to device
+kairox_cache_manager: [layer 16] offloaded 306.47 MiB and cached 14944 ( 78.89%) neurons to device
+kairox_cache_manager: [layer 17] offloaded 304.50 MiB and cached 14848 ( 78.38%) neurons to device
+kairox_cache_manager: [layer 18] offloaded 284.81 MiB and cached 13888 ( 73.31%) neurons to device
+kairox_cache_manager: [layer 19] offloaded 260.53 MiB and cached 12704 ( 67.06%) neurons to device
+kairox_cache_manager: [layer 20] offloaded 248.72 MiB and cached 12128 ( 64.02%) neurons to device
+kairox_cache_manager: [layer 21] offloaded 205.41 MiB and cached 10016 ( 52.87%) neurons to device
+kairox_cache_manager: [layer 22] offloaded 188.34 MiB and cached  9184 ( 48.48%) neurons to device
+kairox_cache_manager: [layer 23] offloaded 156.19 MiB and cached  7616 ( 40.20%) neurons to device
+kairox_cache_manager: [layer 24] offloaded 190.31 MiB and cached  9280 ( 48.99%) neurons to device
+kairox_cache_manager: [layer 25] offloaded 190.31 MiB and cached  9280 ( 48.99%) neurons to device
+kairox_cache_manager: [layer 26] offloaded 189.66 MiB and cached  9248 ( 48.82%) neurons to device
+kairox_cache_manager: [layer 27] offloaded 122.06 MiB and cached  5952 ( 31.42%) neurons to device
+kairox_cache_manager: the cache manager has totally 5262.26 MiB GPU memory footprint
+main: llama threadpool init, n_threads = 12
+
+system_info: n_threads = 12 (n_threads_batch = 12) / 24 | CUDA : ARCHS = 860 | PEER_MAX_BATCH_SIZE = 128 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+
+benchmark mode: warmup = 0, target measured runs = 1, prompts = 14339
+bench run attempt 1 (included 1/1): prompt = 62 tok, decode = 511 tok, prefill = 121.41 t/s, decode = 48.29 t/s
+
+benchmark summary:
+  target measured runs: 1
+  attempted runs:       1
+  filtered runs (decode < 16): 0
+  included runs:        1
+  prefill mean:   121.41 t/s
+  decode mean:    48.29 t/s
+kairox_dump_plan_profile: === RELOAD_PLAN 호스트 프로파일 (n_groups=592) ===
+kairox_dump_plan_profile:   호출        : 14364 (513 스텝 x 28 레이어)
+kairox_dump_plan_profile:   스캔        :    0.082 ms/토큰   (2943.7 ns/호출,  4.97 ns/그룹)
+kairox_dump_plan_profile:   적용        :    0.051 ms/토큰   (1829.4 ns/호출, 짝   8.4 개/호출)
+kairox_dump_plan_profile:   합계        :    0.134 ms/토큰
+kairox_dump_plan_profile:   선택 |S|    :    286.3 / K  286.3  (1.000 배)   load   8.4  evict   8.4  실행   8.4
