@@ -508,7 +508,7 @@ dump)
     for c in "${CELLS[@]}"; do
       read -r cn _ <<<"$c"
       [[ -n "$CELL" ]] && { wantc "$cn" || continue; } || \
-        { [[ " ${DCELLS:-Gorig Ga Gnsc Gansc N Niso Nnsc} " == *" $cn "* ]] || continue; }
+        { [[ " ${DCELLS:-Gorig Ga Gnsc Gansc Niso Nnsc} " == *" $cn "* ]] || continue; }
       setcell "$nm" "$mo" "$base" "$g16" "$g1" "$c" || continue
       out="abl_dumps/${nm}__${cn}.csv"
       [[ -f "$out" ]] && { echo "   skip $nm/$cn — 이미 있음"; continue; }
