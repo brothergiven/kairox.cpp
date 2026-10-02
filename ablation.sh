@@ -74,23 +74,30 @@ MODELS=(
 
 # 이름 split zc gather batch 예산 nosort compact alpha clampint
 CELLS=(
-  # 기준선 둘
+  # 기준선 — 그룹 입도
   "Gorig g16 0 0 0 one   0 0 0.05 1"   # 배포본 — 정수 그룹 예산
   "Ga    g16 0 0 0 one   0 0 0.05 0"   # 구현본 base — 실수 비율 예산 + 되먹임
-  # 제안 사다리 (뉴런 입도)
+  "Gnsc  g16 0 0 0 one   1 1 0.00 0"   # 그룹 + 기구 (alpha=0, 제안과 같은 조건)
+  "Gansc g16 0 0 0 one   1 1 0.05 0"   # 그룹 + 되먹임 + 기구 — 현재 최강 구성
+  # 제안 사다리 — 뉴런 입도
   "N     g1  1 0 0 one   0 0 0.00 0"   # 묶음 전송, 상한 없음
   "Niso  g1  1 0 0 iso1  0 0 0.00 0"   # + 동일전송 상한
   "Nhalf g1  1 0 0 half1 0 0 0.00 0"   # + 더 조임
   "Nns   g1  1 0 0 iso1  1 0 0.00 0"   # + NOSORT
   "Nnsc  g1  1 0 0 iso1  1 1 0.00 0"   # + GPU 압축  <- 제안 전체
 )
-# G 계열(alpha=0 그룹 입도)을 전부 뺐다. 기준선은 배포본과 구현본 base 둘이다.
-#   G      그룹 + alpha=0.           Ga/G 로 되먹임의 값을 재던 칸 (opt-6.7b 1.294, opt-30b 1.003)
-#   Giso   그룹 + 동일전송 상한.     Niso/Giso 로 "바이트당 선택 품질" 을 재던 칸 — 4/5 패배로 측정 완료
-#   Gns    그룹 + NOSORT
-#   Gnsc   그룹 + NOSORT + 압축      Gnsc/G 로 기구가 입도와 독립인지 재려던 칸
-#   Gansc  그룹 + 되먹임 + 기구      측정됨: Gansc/Ga = 1.040 / 1.014 (기구는 그룹에서 작다)
-# 되돌리려면 위 한 줄씩 CELLS 에 넣으면 된다. tau 는 taug 로 자동 해석된다.
+# Gnsc / Gansc 는 한 번 내렸다가 되살렸다. 측정해 보니 제안의 진짜 경쟁자다 —
+# 두 모델 모두에서 최선이 그룹 입도였고 Nnsc 는 3위와 꼴찌였다.
+#   opt-6.7b   Gansc 56.61 > Gorig 55.76 > Nnsc 54.50 > Ga 54.44 > Gnsc 49.76
+#   opt-30b    Gns 30.70 > Gansc 30.39 > Gnsc 30.18 > Ga 29.97 > Gorig 29.35 > Nnsc 27.96
+# 기준선을 Gorig/Ga 로만 두면 약한 상대로만 재게 된다.
+#
+# 아직 빼둔 칸 (측정 완료, 되살리려면 한 줄씩 넣으면 된다. tau 는 taug 로 자동 해석)
+#   "G     g16 0 0 0 one   0 0 0.00 0"   Ga/G = 되먹임의 값 (opt-6.7b 1.294, opt-30b 1.003)
+#   "Giso  g16 0 0 0 iso16 0 0 0.00 0"   Niso/Giso = 바이트당 선택 품질, 5모델 중 4 패
+#   "Gns   g16 0 0 0 one   1 0 0.00 0"   Gnsc/Gns = 그룹에서 압축 단독
+#   "Na    g1  1 0 0 one   0 0 0.05 0"   Na/N = 0.994~1.002, 되먹임은 g=1 에서 죽는다
+#   iso16 보정도 cal 에서 빠져 있다 (Giso 를 되살리면 같이 복원할 것)
 # Gns / Gnsc 는 Gans / Gansc 의 alpha=0 짝이다. 이게 없으면 "기구를 양쪽에 얹고
 # 입도만 본" 비교(Nnsc 대 Gansc)에 alpha 가 섞여 한 변수 비교가 아니게 된다.
 # 셋을 가른다:
@@ -573,9 +580,9 @@ quick)
   {
     echo "시작 $(date '+%F %T')   모델 ${#MODELS[@]} 개"
     echo; echo "######################## ts (Gans/Gansc)  $(date '+%F %T')"
-    CELL="Gorig Ga Niso Nnsc" bash ablation.sh ts
+    CELL="Gorig Ga Gnsc Gansc Niso Nnsc" bash ablation.sh ts
     echo; echo "######################## plan (Gans/Gansc)  $(date '+%F %T')"
-    CELL="Gorig Ga Niso Nnsc" bash ablation.sh plan
+    CELL="Gorig Ga Gnsc Gansc Niso Nnsc" bash ablation.sh plan
     echo; echo "######################## cpu  $(date '+%F %T')"
     bash ablation.sh cpu
     echo; echo "######################## threads  $(date '+%F %T')"
@@ -596,7 +603,7 @@ quick)
 # 경과 시간이라 ggml 풀의 스핀 대기에 오염되지 않는다 — perf 로는 못 쟀던 이유다.
 cpu)
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
-  CCELLS=${CCELLS:-"Gorig Ga N Niso Nnsc"}
+  CCELLS=${CCELLS:-"Gorig Ga Gnsc Gansc Niso Nnsc"}
   for e in "${MODELS[@]}"; do
     IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
     want "$nm" || continue
@@ -629,7 +636,7 @@ cpu)
 threads)
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
   TLIST=${TLIST:-"2 4 12 24"}
-  TCELLS=${TCELLS:-"Gorig Ga Niso Nnsc"}
+  TCELLS=${TCELLS:-"Ga Gansc Niso Nnsc"}
   declare -A R
   printf '%-13s %-6s %4s %-9s  %s\n' 모델 셀 -t t/s clocks
   for e in "${MODELS[@]}"; do

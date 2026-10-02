@@ -16,7 +16,7 @@ import csv, glob, os, re, statistics, unicodedata
 
 PROF  = os.environ.get("PROF",  "prof")
 LOGS  = os.environ.get("LOGS",  "abl_logs")
-CELLS = ["Gorig", "Ga", "N", "Niso", "Nhalf", "Nns", "Nnsc"]
+CELLS = ["Gorig", "Ga", "Gnsc", "Gansc", "N", "Niso", "Nhalf", "Nns", "Nnsc"]
 
 # 커널을 역할로 묶는다. 위에서부터 먼저 맞는 것.
 ROLES = [
