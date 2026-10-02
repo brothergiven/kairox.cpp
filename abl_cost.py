@@ -27,6 +27,7 @@ DUMP = os.environ.get("DUMPS", "abl_dumps")
 BASE = os.environ.get("BASE", "Ga")          # 비교 기준 (그룹 입도)
 MS   = ["opt-6.7b", "prosparse-7b", "SparseQwen2", "Bamboo", "opt-30b"]
 CE   = ["Gorig", "Ga", "Gnsc", "Gansc", "N", "Niso", "Nhalf", "Nns", "Nnsc"]
+# probe 로그가 섞여 있으면 셀 이름이 "Ga@vb5" 꼴이 된다. 실제로 보이는 셀을 쓴다.
 
 
 def w(s):
@@ -42,13 +43,19 @@ def lj(s, n):
     return s + " " * max(0, n - w(s))
 
 
-# ---- CPU 팔 (cpu 패밀리)
+# ---- CPU 팔 (cpu / probe 패밀리)
+# probe 로그는 cpu__모델__셀 이 아니라 probe__모델__셀__vbN 이다. 셀 이름에 vb 를
+# 붙여 따로 들고 간다 — 작동점이 다르면 다른 셀로 봐야 한다.
 CPU = {}
-for p in glob.glob(f"{LOGS}/cpu__*.log"):
-    stem = os.path.basename(p)[5:-4]
+for p in sorted(glob.glob(f"{LOGS}/cpu__*.log") + glob.glob(f"{LOGS}/probe__*.log")):
+    b = os.path.basename(p)[:-4]
+    stem = b.split("__", 1)[1] if "__" in b else b
     if "__" not in stem:
         continue
-    m, c = stem.split("__", 1)
+    parts = stem.split("__")
+    m, c = parts[0], parts[1]
+    if len(parts) > 2:                 # probe: vb 를 셀 이름에 붙인다
+        c = f"{c}@{parts[2]}"
     t = open(p, errors="ignore").read()
     one = lambda rx: (re.findall(rx, t) or [None])[-1]
     steps = one(r"프로파일 \(([\d.]+) 스텝\)")
@@ -62,7 +69,7 @@ for p in glob.glob(f"{LOGS}/cpu__*.log"):
 # ---- 미스 수 (dump 패밀리)
 DP = {}
 for p in glob.glob(f"{DUMP}/*.csv"):
-    stem = os.path.basename(p)[:-4]
+    stem = os.path.basename(p)[:-4]   # 덤프는 모델__셀 (vb 를 바꿔 돌렸으면 DUMPS 로 분리할 것)
     if "__" not in stem:
         continue
     m, c = stem.split("__", 1)
@@ -84,10 +91,12 @@ print(lj("모델", 14) + lj("셀", 7) + rj("work ms/tok", 12) + rj("적중률", 
       + rj("미스/토큰", 11) + rj("us/미스", 9) + rj("join", 8) + rj("evsync", 8)
       + rj("max 팔", 9))
 
+SEEN = sorted({c for (_, c) in CPU} | {c for (_, c) in DP},
+              key=lambda c: (CE.index(c.split("@")[0]) if c.split("@")[0] in CE else 99, c))
 ROWS = {}
 for m in MS:
     shown = False
-    for c in CE:
+    for c in SEEN:
         k, d = CPU.get((m, c)), DP.get((m, c))
         if not (k and d):
             continue
@@ -113,7 +122,7 @@ for m in MS:
     b = ROWS.get((m, BASE))
     if not b:
         continue
-    for c in CE:
+    for c in SEEN:
         v = ROWS.get((m, c))
         if not v or c == BASE:
             continue
