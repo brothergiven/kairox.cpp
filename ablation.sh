@@ -490,8 +490,15 @@ slope)
   ;;
 
 # ---------------------------------------------------------------- dump
-# 품질 지표(낭비율/적중률). 동일전송 확인은 plan 이 더 싸게 해주므로 여기선 품질만 본다.
-# 계측 오버헤드가 섞이므로 t/s 는 읽지 않는다.
+# 미스 수와 품질 지표. cpu 패밀리의 work 와 나누면 "미스당 CPU 비용" 이 나온다 —
+# 입도가 CPU 를 줄이는지 아닌지를 가르는 결정적인 양이다.
+#
+#   CPU 시간 = 미스 수 x 미스당 비용
+#              줄었다    ???   <- 이걸 모르면 입도의 이점을 판정할 수 없다
+#
+# cpu 와 따로 돌린다. 덤프는 sparse_idx 를 D2H 로 끌어와 집계하므로 같이 켜면
+# work 가 간접 오염될 수 있다. 미스 수는 정책 성질이라 계측 오버헤드와 무관하게
+# 재현되므로 따로 재서 합쳐도 된다. 계측이 섞이므로 t/s 는 읽지 않는다.
 dump)
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
   for e in "${MODELS[@]}"; do
@@ -501,7 +508,7 @@ dump)
     for c in "${CELLS[@]}"; do
       read -r cn _ <<<"$c"
       [[ -n "$CELL" ]] && { wantc "$cn" || continue; } || \
-        case "$cn" in Ga|G|Niso|Nhalf|Nns) ;; *) continue ;; esac
+        { [[ " ${DCELLS:-Gorig Ga Gnsc Gansc N Niso Nnsc} " == *" $cn "* ]] || continue; }
       setcell "$nm" "$mo" "$base" "$g16" "$g1" "$c" || continue
       out="abl_dumps/${nm}__${cn}.csv"
       [[ -f "$out" ]] && { echo "   skip $nm/$cn — 이미 있음"; continue; }
