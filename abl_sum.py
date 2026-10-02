@@ -16,8 +16,8 @@ import csv, glob, os, re, statistics, unicodedata
 
 PROF  = os.environ.get("PROF",  "prof")
 LOGS  = os.environ.get("LOGS",  "abl_logs")
-CELLS = ["Gorig", "Ga", "Na", "G", "N", "Giso", "Niso", "Nhalf", "Nns", "Nnsc",
-         "Gans", "Gansc", "Gns", "Gnsc"]
+CELLS = ["Gorig", "Ga", "G", "N", "Giso", "Niso", "Nhalf", "Nns", "Nnsc",
+         "Gansc", "Gns", "Gnsc"]
 
 # 커널을 역할로 묶는다. 위에서부터 먼저 맞는 것.
 ROLES = [
@@ -295,11 +295,10 @@ for model in models:
              ("N",    "G",    "입도 (양쪽 상한 없음)"),
              ("G",    "Ga",   "되먹임 제거 (그룹)"),
              ("N",    "Niso", "상한 해제"),
-             ("Na",   "Ga",   "입도 (되먹임 켠 채)"),
              ("Nhalf","Niso", "상한 절반"),
-             ("Gans", "Ga",   "정렬 제거 (그룹, 되먹임 on)"),
-             ("Gansc","Gans", "호스트 스캔 제거 (그룹)"),
-             ("Gnsc", "G",    "기구 (그룹, 되먹임 off)"),
+             ("Gns",  "G",    "정렬 제거 (그룹)"),
+             ("Gnsc", "Gns",  "호스트 스캔 제거 (그룹)"),
+             ("Gnsc", "G",    "기구 전체 (그룹)"),
              ("Nnsc", "Gnsc", "입도 (기구 양쪽, alpha 동일)"),
              ("Gansc","Gnsc", "되먹임 (기구 얹은 뒤)"),
              ("Ga",   "Gorig","예산 제어 수정판 (저자 배포본 대비)"),

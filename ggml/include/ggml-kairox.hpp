@@ -2,6 +2,8 @@
 
 #include "ggml.h"
 
+#include <atomic>
+#include <chrono>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -100,6 +102,52 @@ const bool k_kairox_reload_rotate          = get_env_bool("KAIROX_RELOAD_ROTATE"
  * 입도를 잘게 할 때 늘어나는 고정비가 어디에 있는지 가르기 위한 것이다.
  */
 const bool k_kairox_profile_plan           = get_env_bool("KAIROX_PROFILE_PLAN", false);
+/**
+ * CPU 팔 프로파일 (KAIROX_PROFILE_CPU).
+ *
+ * CPU 희소 연산은 kairox_executor 워커에 비동기로 제출되고 나중에 split_fut.get() 으로
+ * 합류한다. 그래서 세 지점을 재면 두 팔의 선후가 그대로 나온다.
+ *
+ *   join    메인이 CPU 팔을 기다린 시간      -> CPU 가 임계 팔일 때의 *노출된* 비용
+ *   evsync  CPU split 이 GPU 이벤트를 기다린 시간 -> GPU 가 앞서 있다는 뜻
+ *   work    워커가 실제로 계산한 시간         -> CPU 팔의 크기 자체
+ *
+ * 셋 다 블로킹 호출 앞뒤의 *경과* 시간이다. ggml 풀이 스핀 대기해도 부풀지 않는다 —
+ * perf 로 CPU 사용률을 재면 스핀이 섞여 못 쓴다. 그래서 지금까지 CPU 를 못 쟀다.
+ *
+ *   join ~ 0      CPU 가 필요해지기 전에 끝났다. 다른 팔에 가려져 있다
+ *   join 이 크다  CPU 가 임계 팔이고 그 값이 곧 비용이다
+ */
+const bool k_kairox_profile_cpu = get_env_bool("KAIROX_PROFILE_CPU", false);
+
+struct kairox_cpu_profile {
+    std::atomic<uint64_t> join_ns{ 0 },   join_cnt{ 0 };
+    std::atomic<uint64_t> evsync_ns{ 0 }, evsync_cnt{ 0 };
+    std::atomic<uint64_t> work_ns{ 0 },   work_cnt{ 0 };
+    std::atomic<uint64_t> steps{ 0 };     // 그래프 실행 횟수 = 디코드 토큰 수
+};
+inline kairox_cpu_profile g_kairox_cpu_prof;
+
+inline uint64_t kairox_now_ns() {
+    return (uint64_t) std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// 블로킹 구간을 재는 작은 스코프 가드. KAIROX_PROFILE_CPU 가 꺼져 있으면 아무것도 안 한다.
+struct kairox_span {
+    std::atomic<uint64_t> * ns;
+    std::atomic<uint64_t> * cnt;
+    uint64_t                t0;
+    kairox_span(std::atomic<uint64_t> & a, std::atomic<uint64_t> & c)
+        : ns(k_kairox_profile_cpu ? &a : nullptr), cnt(k_kairox_profile_cpu ? &c : nullptr),
+          t0(k_kairox_profile_cpu ? kairox_now_ns() : 0) {}
+    ~kairox_span() {
+        if (ns) {
+            ns->fetch_add(kairox_now_ns() - t0, std::memory_order_relaxed);
+            cnt->fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+};
 /**
  * 절제 실험용. argsort_top_k + index_mask 대신 고정 임계값 비교로 S 를 만든다.
  * topk_idx 는 마스크를 만드는 데만 쓰이고 순서는 버려지므로, 정렬은 원래 필요하지 않다.

@@ -26,6 +26,7 @@
 # usage
 #   bash ablation.sh quick   # 새 질문 셋만 빠르게, 보정 재사용     (5모델 ~90분)
 #   bash ablation.sh calg    # 그룹 입도 tau 만 덧붙인다 (cal 보존)
+#   bash ablation.sh cpu     # CPU 팔 직접 측정 (work / join / evsync)
 #   bash ablation.sh threads # -t 스윕 — CPU 임계경로 + 입도의 CPU 효과
 #   bash ablation.sh all     # 전 패밀리 순서대로, 로그 파일로      (5모델 ~7시간)
 #   bash ablation.sh cal     # 수요 측정 + 상한/tau 이분 탐색          (모델당 ~22분)
@@ -75,7 +76,6 @@ MODELS=(
 CELLS=(
   "Gorig g16 0 0 0 one   0 0 0.05 1"
   "Ga    g16 0 0 0 one   0 0 0.05 0"
-  "Na    g1  1 0 0 one   0 0 0.05 0"
   "G     g16 0 0 0 one   0 0 0.00 0"
   "N     g1  1 0 0 one   0 0 0.00 0"
   "Giso  g16 0 0 0 iso16 0 0 0.00 0"
@@ -83,7 +83,6 @@ CELLS=(
   "Nhalf g1  1 0 0 half1 0 0 0.00 0"
   "Nns   g1  1 0 0 iso1  1 0 0.00 0"
   "Nnsc  g1  1 0 0 iso1  1 1 0.00 0"
-  "Gans  g16 0 0 0 one   1 0 0.05 0"
   "Gansc g16 0 0 0 one   1 1 0.05 0"
   "Gns   g16 0 0 0 one   1 0 0.00 0"
   "Gnsc  g16 0 0 0 one   1 1 0.00 0"
@@ -103,9 +102,13 @@ CELLS=(
 #   작으면  우리 기여는 "g=1 이 만든 세금을 g=1 이 되걷는 것" 에 그친다
 #   크면    입도와 무관한 독립 기여다
 # 그룹 입도는 n_groups 가 592~1024 라 bitonic 경로를 쓰고 정렬이 싸다 — 작을 것으로 본다.
-# Nb (cudaMemcpyBatchAsync) 는 뺐다. 두 모델에서 Niso 대비 0.865 / 0.733 으로 졌고
-# nsys 아래서는 batch API 계측 때문에 0.456 까지 무너져 분해도 못 읽는다.
-# 네 경로 중 최하위로 확정 — zerocopy 가 g=1 의 답이다.
+# 확인되어 뺀 칸
+#   Nb    cudaMemcpyBatchAsync. Niso 대비 0.865 / 0.733 으로 지고 nsys 아래서는
+#         batch API 계측 때문에 0.456 까지 무너져 분해도 못 읽는다. 네 경로 중 최하위.
+#   Na    g=1 + 되먹임. 5 모델에서 Na/N = 0.994~1.002 — 되먹임은 g=1 에서 죽는다.
+#         N 과 같은 칸을 두 번 도는 셈이라 뺐다.
+#   Gans  그룹 + 되먹임 + NOSORT. Gns/Gnsc (alpha=0) 가 들어와 기구 분리를 커버한다.
+#         제안의 설정이 alpha=0 이므로 그쪽이 본 비교다.
 
 [[ -x "$BIN" ]] || { echo "MISSING $BIN — bash compile_kairox.sh rel" >&2; exit 1; }
 mkdir -p prof abl_logs abl_dumps
@@ -139,11 +142,22 @@ run() {
       KAIROX_DFR_LAMBDA_INIT=0.67 KAIROX_DFR_LAMBDA_ADAPT_RATE=$9 \
       KAIROX_PROFILE_PLAN=${13} KAIROX_DUMP_ACTIVATION=${14} KAIROX_PLAN_DELAY_US=${15} \
       KAIROX_DUMP_ACTIVATION_PATH="${DUMP_OUT:-kairox_activation.csv}" \
-      KAIROX_CLAMP_INT="${CLAMP_INT:-0}" \
+      KAIROX_CLAMP_INT="${CLAMP_INT:-0}" KAIROX_PROFILE_CPU="${PROF_CPU:-0}" \
     ${WRAP:-} $BIN -m "$M/$1.gguf" -kairox-ms "$M/$2.gguf" \
       -cffn -fit off -ngl all --no-mmap --no-direct-io -vb 0 -no-cnv \
       --repeat-penalty 1.1 -t "${THREADS:-12}" -s 42 -c 1024 -n "${11}" --no-warmup --ignore-eos \
       --bench-prompt-file prompts.txt --bench-runs "${12}" --bench-warmup 0 --bench-no-print 2>&1
+}
+
+# 같은 모델 안에서 이미 돈 설정과 완전히 같으면 건너뛴다.
+# 상한은 min(두 수요) 에 맞추므로 모델마다 한쪽은 B=1.0 이 되어
+# Giso == G 또는 Niso == N 이 된다 — 같은 칸을 두 번 돌 이유가 없다.
+declare -A SEEN
+dup_key() { echo "$C_SPLIT|$C_ZC|$C_GA|$C_BA|$C_B|$C_NS|$C_TAU|$C_CP|$C_AL|$C_CI"; }
+is_dup() {
+  local k; k=$(dup_key)
+  [[ -n "${SEEN[$1|$k]:-}" ]] && { echo "${SEEN[$1|$k]}"; return 0; }
+  SEEN["$1|$k"]=$2; return 1
 }
 
 # 셀 한 줄을 풀어 run 인자로 쓸 전역을 채운다.
@@ -325,6 +339,11 @@ ts)
         read -r cn _ <<<"$c"
         wantc "$cn" || continue
         setcell "$nm" "$mo" "$base" "$g16" "$g1" "$c" || { echo "   skip $nm/$cn — $CAL 에 값 없음"; continue; }
+        if twin=$(is_dup "$nm" "$cn"); then
+          printf '%-10s %-6s %-6s %-9s %-8s %4s  (== %s, 생략)\n' "$nm" "$cn" "$C_BUD" "$C_B" "$C_TAU" "$rep" "$twin"
+          [[ -n "${R["$nm|$twin"]:-}" ]] && R["$nm|$cn"]="${R["$nm|$twin"]}"
+          continue
+        fi
         ck=$(clocks)
         printf '%-10s %-6s %-6s %-9s %-6s %5s  ' "$nm" "$cn" "$C_BUD" "$C_B" "$C_TAU" "$rep"
         v=$(WRAP= run "$mo" "$C_SPLIT" "$C_ZC" "$C_GA" "$C_BA" "$C_B" "$C_NS" "$C_CP" "$C_AL" \
@@ -554,11 +573,42 @@ quick)
     CELL="Gorig Ga G Gans Gansc Gns Gnsc Nnsc" bash ablation.sh ts
     echo; echo "######################## plan (Gans/Gansc)  $(date '+%F %T')"
     CELL="Gorig Ga Gans Gansc Gns Gnsc" bash ablation.sh plan
+    echo; echo "######################## cpu  $(date '+%F %T')"
+    bash ablation.sh cpu
     echo; echo "######################## threads  $(date '+%F %T')"
     bash ablation.sh threads
     echo "끝 $(date '+%F %T')"
   } 2>&1 | tee "$log"
   echo; echo "전체 로그: $log"
+  ;;
+
+# ---------------------------------------------------------------- cpu
+# CPU 팔을 직접 잰다 (KAIROX_PROFILE_CPU). 지금까지 프로파일링이 CUDA 만 봤다.
+#
+# CPU 희소 연산은 kairox_executor 워커에 비동기 제출되고 split_fut.get() 으로 합류한다.
+# 그 블로킹 구간들의 경과 시간을 재면 두 팔의 선후가 그대로 나온다.
+#   work   워커가 계산한 시간          CPU 팔의 크기
+#   join   메인이 CPU 를 기다린 시간   CPU 가 임계 팔일 때의 노출된 비용
+#   evsync CPU 가 GPU 를 기다린 시간   GPU 가 앞서 있다는 뜻
+# 경과 시간이라 ggml 풀의 스핀 대기에 오염되지 않는다 — perf 로는 못 쟀던 이유다.
+cpu)
+  [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
+  CCELLS=${CCELLS:-"Ga G Giso Niso Nnsc Gnsc"}
+  for e in "${MODELS[@]}"; do
+    IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
+    want "$nm" || continue
+    check "$nm" "$mo" "$base" "$g16" "$g1" || continue
+    for c in "${CELLS[@]}"; do
+      read -r cn _ <<<"$c"
+      [[ " $CCELLS " == *" $cn "* ]] || continue
+      setcell "$nm" "$mo" "$base" "$g16" "$g1" "$c" || continue
+      echo "-- $nm / $cn   B=$C_B tau=$C_TAU alpha=$C_AL"
+      PROF_CPU=1 WRAP= \
+        run "$mo" "$C_SPLIT" "$C_ZC" "$C_GA" "$C_BA" "$C_B" "$C_NS" "$C_CP" "$C_AL" \
+            "$C_TAU" "$N" 1 0 0 0 > "abl_logs/cpu__${nm}__${cn}.log" 2>&1
+      grep -E 'CPU 팔 프로파일|work|join|evsync|판정' "abl_logs/cpu__${nm}__${cn}.log" | sed 's/^/   /'
+    done
+  done
   ;;
 
 # ---------------------------------------------------------------- threads
@@ -629,7 +679,7 @@ all)
   {
     echo "시작 $(date '+%F %T')   모델 ${#MODELS[@]} 개   N=$N NSYS_N=$NSYS_N REPS=$REPS"
     bash ablation.sh show
-    for f in cal ts plan slope nsys; do
+    for f in cal ts plan cpu nsys; do   # slope 는 5 모델 0.93~1.10 으로 확정, 뺐다
       echo; echo "######################## $f   $(date '+%F %T')"
       t0=$SECONDS
       if bash ablation.sh "$f"; then

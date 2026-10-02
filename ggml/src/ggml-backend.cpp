@@ -1557,6 +1557,18 @@ void kairox_register_dependency(ggml_backend_sched_t        sched,
     kairox_append_event(sched, dst, dst_state, event);
 }
 
+// KAIROX_PROFILE_CPU: 워커가 실제로 계산한 시간. CPU 팔의 크기 자체다.
+static enum ggml_status kairox_timed_compute(ggml_backend_t backend, struct ggml_cgraph * graph) {
+    kairox_span _s(g_kairox_cpu_prof.work_ns, g_kairox_cpu_prof.work_cnt);
+    return ggml_backend_graph_compute_async(backend, graph);
+}
+
+// KAIROX_PROFILE_CPU: 메인 스레드가 CPU 팔을 기다린 시간. 노출된 비용이다.
+template <typename Fut> static enum ggml_status kairox_join(Fut & fut) {
+    kairox_span _s(g_kairox_cpu_prof.join_ns, g_kairox_cpu_prof.join_cnt);
+    return fut.get();
+}
+
 static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t sched) {
     GGML_ASSERT(sched);
     struct ggml_backend_sched_split * splits = sched->splits;
@@ -1574,7 +1586,7 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
 
         if (k_enable_kairox_parallel && split_fut.valid() &&
             ggml_backend_dev_type(split_backend->device) != GGML_BACKEND_DEVICE_TYPE_CPU) {
-            enum ggml_status async_ec = split_fut.get();
+            enum ggml_status async_ec = kairox_join(split_fut);
             if (async_ec != GGML_STATUS_SUCCESS) {
                 return async_ec;
             }
@@ -1589,14 +1601,17 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
                     for (int k = 0; k < kairox_extra->event_count; ++k) {
                         if (kairox_extra->states[k] == KAIROX_EVENT_SYNCHRONIZE) {
                             if (!waited_for_async_ec && split_fut.valid() && async_split_fut_flag == KAIROX_SPLIT_AXPY_SPARSE) {
-                                enum ggml_status async_ec = split_fut.get();
+                                enum ggml_status async_ec = kairox_join(split_fut);
                                 if (async_ec != GGML_STATUS_SUCCESS) {
                                     return async_ec;
                                 }
                                 waited_for_async_ec  = true;
                                 async_split_fut_flag = KAIROX_SPLIT_NONE;
                             }
-                            ggml_backend_event_synchronize(kairox_extra->events[k]);
+                            {   // KAIROX_PROFILE_CPU: GPU 가 앞서 있으면 여기서 기다린다
+                                kairox_span _s(g_kairox_cpu_prof.evsync_ns, g_kairox_cpu_prof.evsync_cnt);
+                                ggml_backend_event_synchronize(kairox_extra->events[k]);
+                            }
                             skip_backend_sync = true;
                         }
                     }
@@ -1738,11 +1753,11 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
             auto * kairox_extra = (kairox_tensor_extra *) split->graph.nodes[0]->extra;
             if (k_enable_kairox_parallel && kairox_extra && kairox_extra->split_flag == KAIROX_SPLIT_MUL_MAT_SPARSE) {
                 split_fut = sched->kairox_executor->submit(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_MUL_MAT_SPARSE,
-                                                         ggml_backend_graph_compute_async, split_backend, &split->graph);
+                                                         kairox_timed_compute, split_backend, &split->graph);
                 async_split_fut_flag = KAIROX_SPLIT_MUL_MAT_SPARSE;
             } else if (k_enable_kairox_parallel && kairox_extra && kairox_extra->split_flag == KAIROX_SPLIT_AXPY_SPARSE) {
                 split_fut = sched->kairox_executor->submit(SingleThreadExecutor::KairoxWaitType::KAIROX_WAIT_AXPY_SPARSE,
-                                                         ggml_backend_graph_compute_async, split_backend, &split->graph);
+                                                         kairox_timed_compute, split_backend, &split->graph);
                 async_split_fut_flag = KAIROX_SPLIT_AXPY_SPARSE;
             } else {
                 enum ggml_status ec = ggml_backend_graph_compute_async(split_backend, &split->graph);
@@ -1793,7 +1808,7 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
     }
 
     if (k_enable_kairox_parallel && split_fut.valid()) {
-        enum ggml_status async_ec = split_fut.get();
+        enum ggml_status async_ec = kairox_join(split_fut);
         if (async_ec != GGML_STATUS_SUCCESS) {
             return async_ec;
         }
@@ -1977,6 +1992,9 @@ enum ggml_status ggml_backend_sched_graph_compute(ggml_backend_sched_t sched, st
 }
 
 enum ggml_status ggml_backend_sched_graph_compute_async(ggml_backend_sched_t sched, struct ggml_cgraph * graph) {
+    if (k_kairox_profile_cpu) {   // 그래프 1회 = 디코드 토큰 1개
+        g_kairox_cpu_prof.steps.fetch_add(1, std::memory_order_relaxed);
+    }
     GGML_ASSERT(sched);
     if (!sched->is_reset && !sched->is_alloc) {
         ggml_backend_sched_reset(sched);

@@ -599,6 +599,33 @@ static void kairox_dump_plan_profile(const std::vector<kairox_layer_cache *> & l
                    (double) n_load / calls, (double) n_evict / calls, (double) pairs / calls);
 }
 
+// CPU 팔 프로파일 요약 (KAIROX_PROFILE_CPU).
+// join 이 CPU 가 임계 팔일 때의 노출된 비용이고, evsync 는 그 반대(GPU 가 앞섬)다.
+// 둘 다 작으면 두 팔이 균형이거나 전송이 최대 팔이라는 뜻이다.
+static void kairox_dump_cpu_profile() {
+    const auto & P     = g_kairox_cpu_prof;
+    const double steps = (double) P.steps.load();
+    if (steps <= 0) {
+        LLAMA_LOG_INFO("%s: CPU 프로파일: 그래프 실행 0\n", __func__);
+        return;
+    }
+    const double join = P.join_ns.load()   / 1e6 / steps;
+    const double evs  = P.evsync_ns.load() / 1e6 / steps;
+    const double work = P.work_ns.load()   / 1e6 / steps;
+
+    LLAMA_LOG_INFO("%s: === CPU 팔 프로파일 (%.0f 스텝) ===\n", __func__, steps);
+    LLAMA_LOG_INFO("%s:   work   : %8.3f ms/토큰   (%llu 회, %6.1f us/회)   CPU 팔의 크기\n", __func__,
+                   work, (unsigned long long) P.work_cnt.load(),
+                   P.work_cnt.load() ? P.work_ns.load() / 1e3 / P.work_cnt.load() : 0.0);
+    LLAMA_LOG_INFO("%s:   join   : %8.3f ms/토큰   (%llu 회)   메인이 CPU 를 기다림 = 노출된 비용\n", __func__,
+                   join, (unsigned long long) P.join_cnt.load());
+    LLAMA_LOG_INFO("%s:   evsync : %8.3f ms/토큰   (%llu 회)   CPU 가 GPU 를 기다림\n", __func__,
+                   evs, (unsigned long long) P.evsync_cnt.load());
+    LLAMA_LOG_INFO("%s:   판정   : %s (노출 %.1f%% of work)\n", __func__,
+                   join > evs ? "CPU 가 앞선 팔" : "GPU 가 앞선 팔",
+                   work > 0 ? join / work * 100.0 : 0.0);
+}
+
 kairox_cache_manager::~kairox_cache_manager() {
     if (k_kairox_dump_activation) {
         kairox_dump_activation_csv(layer_caches);
@@ -608,6 +635,9 @@ kairox_cache_manager::~kairox_cache_manager() {
     }
     if (k_kairox_profile_plan) {
         kairox_dump_plan_profile(layer_caches);
+    }
+    if (k_kairox_profile_cpu) {
+        kairox_dump_cpu_profile();
     }
     for (auto * const lc : layer_caches) {
         delete lc;
