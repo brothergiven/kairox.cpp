@@ -18,6 +18,9 @@
 # 그래서 기준 축(Ga/Na)은 상한 없는 셀에만 두고, 제거 사다리는 alpha=0 에서만 돌린다.
 #
 # usage
+#   bash ablation.sh quick   # 새 질문 셋만 빠르게, 보정 재사용     (5모델 ~90분)
+#   bash ablation.sh calg    # 그룹 입도 tau 만 덧붙인다 (cal 보존)
+#   bash ablation.sh threads # -t 스윕 — CPU 임계경로 + 입도의 CPU 효과
 #   bash ablation.sh all     # 전 패밀리 순서대로, 로그 파일로      (5모델 ~7시간)
 #   bash ablation.sh cal     # 수요 측정 + 상한/tau 이분 탐색          (모델당 ~22분)
 #   bash ablation.sh ts      # 벽시계 9셀 x 모델 x 3반복, 라운드로빈    (모델당 ~20분)
@@ -26,6 +29,8 @@
 #   bash ablation.sh slope   # PLAN_DELAY_US 0/200/400 on Niso        (~3분)
 #   bash ablation.sh dump    # 품질 지표(낭비율/적중률)               (~20분)
 #
+#   ONLY="opt-6.7b opt-30b" bash ablation.sh quick   # 수요비 양 극단 두 모델만 (~1시간)
+#   TLIST="2 24" TCELLS="Ga Nnsc" bash ablation.sh threads   # 더 줄여서
 #   ONLY=opt-6.7b bash ablation.sh ts      # 한 모델만
 #   CELL=Nns      bash ablation.sh nsys    # 한 셀만
 #   REPS=1        bash ablation.sh ts      # 빠르게 훑기
@@ -71,7 +76,14 @@ CELLS=(
   "Nhalf g1  1 0 0 half1 0 0 0.00"
   "Nns   g1  1 0 0 iso1  1 0 0.00"
   "Nnsc  g1  1 0 0 iso1  1 1 0.00"
+  "Gans  g16 0 0 0 one   1 0 0.05"
+  "Gansc g16 0 0 0 one   1 1 0.05"
 )
+# Gans / Gansc 는 배포본(그룹 입도 + 되먹임)에 기구만 얹은 칸이다.
+# NOSORT 와 압축은 입도와 독립인데 그룹 입도에서 한 번도 재지 않았다.
+#   작으면  우리 기여는 "g=1 이 만든 세금을 g=1 이 되걷는 것" 에 그친다
+#   크면    입도와 무관한 독립 기여다
+# 그룹 입도는 n_groups 가 592~1024 라 bitonic 경로를 쓰고 정렬이 싸다 — 작을 것으로 본다.
 # Nb (cudaMemcpyBatchAsync) 는 뺐다. 두 모델에서 Niso 대비 0.865 / 0.733 으로 졌고
 # nsys 아래서는 batch API 계측 때문에 0.456 까지 무너져 분해도 못 읽는다.
 # 네 경로 중 최하위로 확정 — zerocopy 가 g=1 의 답이다.
@@ -79,8 +91,8 @@ CELLS=(
 [[ -x "$BIN" ]] || { echo "MISSING $BIN — bash compile_kairox.sh rel" >&2; exit 1; }
 mkdir -p prof abl_logs abl_dumps
 
-want()  { [[ -z "$ONLY" || "$1" == *"$ONLY"* ]]; }
-wantc() { [[ -z "$CELL" || "$1" == "$CELL" ]]; }
+want()  { [[ -z "$ONLY" || " $ONLY " == *" $1 "* ]]; }   # ONLY="opt-6.7b opt-30b" 도 된다
+wantc() { [[ -z "$CELL" || " $CELL " == *" $1 "* ]]; }   # CELL="Gans Gansc" 도 된다
 med()   { printf '%s\n' "$@" | sort -n | awk '{v[NR]=$1} END{print v[int((NR+1)/2)]}'; }
 
 check() {  # 모델 파일 확인. 없으면 KAIROX 초기화에서 segfault 난다.
@@ -110,7 +122,7 @@ run() {
       KAIROX_DUMP_ACTIVATION_PATH="${DUMP_OUT:-kairox_activation.csv}" \
     ${WRAP:-} $BIN -m "$M/$1.gguf" -kairox-ms "$M/$2.gguf" \
       -cffn -fit off -ngl all --no-mmap --no-direct-io -vb 0 -no-cnv \
-      --repeat-penalty 1.1 -t 12 -s 42 -c 1024 -n "${11}" --no-warmup --ignore-eos \
+      --repeat-penalty 1.1 -t "${THREADS:-12}" -s 42 -c 1024 -n "${11}" --no-warmup --ignore-eos \
       --bench-prompt-file prompts.txt --bench-runs "${12}" --bench-warmup 0 --bench-no-print 2>&1
 }
 
@@ -121,7 +133,8 @@ setcell() {
   C_SPLIT="$base-$g16"; [[ "$C_SPL" == g1 ]] && C_SPLIT="$base-$g1"
   C_TAU=0
   if ((C_NS)); then
-    C_TAU=$(cal_get "$nm" tau)
+    # tau 는 입도마다 다르다 — g=1 은 tau, 그룹은 taug
+    C_TAU=$(cal_get "$nm" "$([[ "$C_SPL" == g1 ]] && echo tau || echo taug)")
     [[ -z "$C_TAU" ]] && return 1
   fi
   if [[ "$C_BUD" == one ]]; then C_B=1.0; else C_B=$(cal_get "$nm" "$C_BUD"); fi
@@ -244,6 +257,25 @@ cal)
       echo "$nm tau $best" >> "$CAL"; echo "$nm taurat $bestv" >> "$CAL"
       f=""; awk -v x="$bestv" 'BEGIN{exit !(x<0.9 || x>1.1)}' && f="   <<< 10% 밖 — 상주 집합이 달라 오염"
       echo "   -> tau=$best  |S|/K=$bestv$f"
+    fi
+
+    # 그룹 입도 tau (Gans/Gansc 용). 기구가 입도와 독립인지 재려면 그룹 쪽도 보정해야 한다.
+    echo "== $nm : taug 이분 탐색 (그룹 입도)"
+    lo=0.0005; hi=0.8; best=; bestd=999; bestv=
+    for it in 1 2 3 4 5 6 7; do
+      q=$(awk -v a="$lo" -v c="$hi" 'BEGIN{printf "%.5f", sqrt(a*c)}')
+      r=$(run "$mo" "$base-$g16" 0 0 0 1.0 1 0 0.00 "$q" "$N" 1 1 0 0 | sel_of)
+      [[ -z "$r" ]] && { printf '   taug=%-9s (측정 실패)\n' "$q"; break; }
+      printf '   taug=%-9s |S|/K=%s\n' "$q" "$r"
+      d=$(awk -v x="$r" 'BEGIN{d=x-1; if(d<0)d=-d; print d}')
+      awk -v a="$d" -v c="$bestd" 'BEGIN{exit !(a<c)}' && { best=$q; bestd=$d; bestv=$r; }
+      awk -v a="$bestd" 'BEGIN{exit !(a<0.02)}' && break
+      if awk -v x="$r" 'BEGIN{exit !(x>1)}'; then lo=$q; else hi=$q; fi
+    done
+    if [[ -n "$best" ]]; then
+      echo "$nm taug $best" >> "$CAL"; echo "$nm taugrat $bestv" >> "$CAL"
+      f=""; awk -v x="$bestv" 'BEGIN{exit !(x<0.9 || x>1.1)}' && f="   <<< 10% 밖 — 오염"
+      echo "   -> taug=$best  |S|/K=$bestv$f"
     fi
     echo
   done
@@ -451,6 +483,118 @@ show)
   done
   ;;
 
+# ---------------------------------------------------------------- calg
+# 그룹 입도 tau 만 덧붙인다. cal 은 파일을 지우고 다시 쓰므로 (수요 측정 + 상한 탐색)
+# 이미 유효한 보정이 있을 때 taug 하나 때문에 전체를 다시 돌릴 이유가 없다.
+calg)
+  [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
+  for e in "${MODELS[@]}"; do
+    IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
+    want "$nm" || continue
+    check "$nm" "$mo" "$base" "$g16" "$g1" || continue
+    [[ -n "$(cal_get "$nm" taug)" ]] && { echo "   skip $nm — taug 이미 있음"; continue; }
+    echo "== $nm : taug 이분 탐색 (그룹 입도)"
+    lo=0.0005; hi=0.8; best=; bestd=999; bestv=
+    for it in 1 2 3 4 5 6 7; do
+      q=$(awk -v a="$lo" -v c="$hi" 'BEGIN{printf "%.5f", sqrt(a*c)}')
+      r=$(run "$mo" "$base-$g16" 0 0 0 1.0 1 0 0.00 "$q" "$N" 1 1 0 0 | sel_of)
+      [[ -z "$r" ]] && { printf '   taug=%-9s (측정 실패)\n' "$q"; break; }
+      printf '   taug=%-9s |S|/K=%s\n' "$q" "$r"
+      d=$(awk -v x="$r" 'BEGIN{d=x-1; if(d<0)d=-d; print d}')
+      awk -v a="$d" -v c="$bestd" 'BEGIN{exit !(a<c)}' && { best=$q; bestd=$d; bestv=$r; }
+      awk -v a="$bestd" 'BEGIN{exit !(a<0.02)}' && break
+      if awk -v x="$r" 'BEGIN{exit !(x>1)}'; then lo=$q; else hi=$q; fi
+    done
+    if [[ -n "$best" ]]; then
+      echo "$nm taug $best" >> "$CAL"; echo "$nm taugrat $bestv" >> "$CAL"
+      f=""; awk -v x="$bestv" 'BEGIN{exit !(x<0.9 || x>1.1)}' && f="   <<< 10% 밖 — 오염"
+      echo "   -> taug=$best  |S|/K=$bestv$f"
+    fi
+  done
+  ;;
+
+# ---------------------------------------------------------------- quick
+# 세 질문을 빠르게. 기존 보정을 재사용하고 새 칸만 돌린다.
+#   1. 배포본(그룹+되먹임)에 NOSORT/압축을 얹으면?   Gans / Gansc
+#   2. CPU 를 줄이면 판정이 바뀌나?                   threads
+#   3. 입도가 CPU 연산시간을 바꾸나?                  threads 의 셀별 기울기
+# 기본은 N=256, REPS=1 로 빠르게 훑는다 (노이즈 2.8% 를 이미 알고 있다).
+quick)
+  log=${ALL_LOG:-abl_quick_$(date +%m%d_%H%M).log}
+  export N=${N:-256} REPS=${REPS:-1}
+  echo "전체 로그: $log   (N=$N REPS=$REPS)"
+  {
+    echo "시작 $(date '+%F %T')   모델 ${#MODELS[@]} 개"
+    echo; echo "######################## calg  $(date '+%F %T')"
+    bash ablation.sh calg
+    echo; echo "######################## ts (Gans/Gansc)  $(date '+%F %T')"
+    CELL="Ga G Gans Gansc Nnsc" bash ablation.sh ts
+    echo; echo "######################## plan (Gans/Gansc)  $(date '+%F %T')"
+    CELL="Ga Gans Gansc" bash ablation.sh plan
+    echo; echo "######################## threads  $(date '+%F %T')"
+    bash ablation.sh threads
+    echo "끝 $(date '+%F %T')"
+  } 2>&1 | tee "$log"
+  echo; echo "전체 로그: $log"
+  ;;
+
+# ---------------------------------------------------------------- threads
+# CPU 용량을 바꿔가며 셀별 민감도를 본다.  질문 두 개를 한 번에 답한다.
+#
+#   (a) CPU 가 임계 경로인가       곡선이 평평하면 아니다
+#   (b) 입도가 CPU 작업을 바꾸나   그룹 셀과 뉴런 셀의 기울기가 다르면 그렇다
+#
+# 서버는 nproc 24 이고 기본 -t 12 는 절반이다. 아래로도 위로도 봐야 한다 —
+# 올려서 안 변하면 CPU 가 숨어 있는 게 확정되고, 내려서 뉴런 셀이 덜 나빠지면
+# 입도가 CPU 를 비웠다는 직접 증거다. 적중률 장부가 아니라 벽시계로 재는 유일한 길.
+#
+# CPU 쪽 직접 타이머가 없는 이유: CPU 연산은 backend_cpu 가 ggml 스케줄러 분할로
+# 돌아 한 지점을 감쌀 수 없다. cpu_sparse 버킷은 CPU 를 안 재는 것으로 판명됐다.
+threads)
+  [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
+  TLIST=${TLIST:-"2 4 12 24"}
+  TCELLS=${TCELLS:-"Ga Giso Niso Nnsc"}
+  declare -A R
+  printf '%-13s %-6s %4s %-9s  %s\n' 모델 셀 -t t/s clocks
+  for e in "${MODELS[@]}"; do
+    IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
+    want "$nm" || continue
+    check "$nm" "$mo" "$base" "$g16" "$g1" || continue
+    for c in "${CELLS[@]}"; do
+      read -r cn _ <<<"$c"
+      [[ " $TCELLS " == *" $cn "* ]] || continue
+      setcell "$nm" "$mo" "$base" "$g16" "$g1" "$c" || { echo "   skip $nm/$cn"; continue; }
+      for th in $TLIST; do
+        printf '%-13s %-6s %4s ' "$nm" "$cn" "$th"
+        v=$(THREADS="$th" WRAP= \
+            run "$mo" "$C_SPLIT" "$C_ZC" "$C_GA" "$C_BA" "$C_B" "$C_NS" "$C_CP" "$C_AL" \
+                "$C_TAU" "$N" 3 0 0 0 \
+            | grep -oE 'decode mean:[[:space:]]*[0-9.]+' | tail -1 | grep -oE '[0-9.]+$')
+        printf '%-9s  %s\n' "${v:-실패}" "$(clocks)"
+        [[ -n "$v" ]] && R["$nm|$cn|$th"]=$v
+      done
+    done
+  done
+  echo
+  for e in "${MODELS[@]}"; do
+    IFS='|' read -r nm _ <<<"$e"; want "$nm" || continue
+    echo "== $nm   t/s (행=셀, 열=스레드).  24/2 가 크면 CPU 민감, 1 에 가까우면 CPU 가 숨어 있다"
+    printf '%-7s' 셀; for th in $TLIST; do printf '%8s' "t$th"; done; printf '%9s%9s\n' 24/2 24/12
+    for c in "${CELLS[@]}"; do
+      read -r cn _ <<<"$c"
+      [[ " $TCELLS " == *" $cn "* ]] || continue
+      [[ -z "${R["$nm|$cn|${TLIST%% *}"]:-}" ]] && continue
+      printf '%-7s' "$cn"
+      for th in $TLIST; do printf '%8s' "${R["$nm|$cn|$th"]:-—}"; done
+      lo=${R["$nm|$cn|${TLIST%% *}"]:-}; hi=${R["$nm|$cn|${TLIST##* }"]:-}; mid=${R["$nm|$cn|12"]:-}
+      printf '%9s%9s\n' \
+        "$([[ -n "$lo$hi" ]] && awk -v a="$hi" -v b="$lo" 'BEGIN{printf "%.3f", a/b}' || echo —)" \
+        "$([[ -n "$mid$hi" ]] && awk -v a="$hi" -v b="$mid" 'BEGIN{printf "%.3f", a/b}' || echo —)"
+    done
+    echo
+  done
+  ;;
+
 # ---------------------------------------------------------------- all
 # 전 패밀리를 순서대로. 5 모델이면 일곱 시간쯤 걸리므로 로그를 파일로 남긴다.
 # 한 패밀리가 실패해도 다음으로 넘어간다 — 긴 런이 중간에서 통째로 죽지 않게.
@@ -480,7 +624,7 @@ all)
   ;;
 
 *)
-  echo "usage: bash ablation.sh {show|all|cal|ts|plan|nsys|slope|dump}" >&2
+  echo "usage: bash ablation.sh {show|quick|all|cal|calg|ts|plan|threads|nsys|slope|dump}" >&2
   exit 1
   ;;
 esac

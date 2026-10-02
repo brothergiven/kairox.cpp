@@ -16,7 +16,7 @@ import csv, glob, os, re, statistics, unicodedata
 
 PROF  = os.environ.get("PROF",  "prof")
 LOGS  = os.environ.get("LOGS",  "abl_logs")
-CELLS = ["Ga", "Na", "G", "N", "Giso", "Niso", "Nhalf", "Nns", "Nnsc"]
+CELLS = ["Ga", "Na", "G", "N", "Giso", "Niso", "Nhalf", "Nns", "Nnsc", "Gans", "Gansc"]
 
 # 커널을 역할로 묶는다. 위에서부터 먼저 맞는 것.
 ROLES = [
@@ -293,7 +293,10 @@ for model in models:
              ("G",    "Ga",   "되먹임 제거 (그룹)"),
              ("N",    "Niso", "상한 해제"),
              ("Na",   "Ga",   "입도 (되먹임 켠 채)"),
-             ("Nhalf","Niso", "상한 절반")]
+             ("Nhalf","Niso", "상한 절반"),
+             ("Gans", "Ga",   "정렬 제거 (그룹 입도)"),
+             ("Gansc","Gans", "호스트 스캔 제거 (그룹)"),
+             ("Nnsc", "Gansc","입도 (기구를 양쪽에 얹고)")]
     print(lj("비교", 16) + lj("무엇이 바뀌나", 24)
           + "".join(rj(r, 8) for r in ORDER) + rj("ΣΔ", 8) + rj("Δ벽시계", 10) + rj("배", 7))
     for hi, lo, what in PAIRS:
