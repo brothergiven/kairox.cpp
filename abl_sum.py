@@ -65,6 +65,7 @@ def f(v):
 
 
 RE_STEPS = re.compile(r"호출\s*:\s*[\d,]+\s*\(([\d,]+)\s*스텝")
+RE_LAYERS = re.compile(r"스텝\s*x\s*([\d,]+)\s*레이어")
 RE_SCAN  = re.compile(r"스캔\s*:\s*([0-9.]+)\s*ms")
 RE_APPLY = re.compile(r"적용\s*:\s*([0-9.]+)\s*ms")
 RE_PAIRS = re.compile(r"실행\s+([0-9.]+)")
@@ -84,6 +85,7 @@ def read_plan(model, cell):
 
     return dict(steps=one(RE_STEPS, lambda s: int(float(s))), scan=one(RE_SCAN),
                 apply=one(RE_APPLY), pairs=one(RE_PAIRS), sel=one(RE_SEL),
+                layers=one(RE_LAYERS, lambda s: int(float(s))),
                 ngroups=one(RE_NG, lambda s: int(float(s))))
 
 
@@ -217,10 +219,23 @@ for model in models:
         continue
 
     # ---- 2. 역할별 커널 시간. ms/토큰.
-    def steps(c):
-        return (plans.get(c) or {}).get("steps") or (data[c]["plan"].get("steps")) or 0
+    # nsys 런과 plan 런은 길이가 다르다 (NSYS_N 대 N). plan 의 스텝수로 nsys 커널
+    # 총시간을 나누면 그 비율만큼 틀린다 — 한 번 4 배 어긋났다.
+    # shifted_step_kernel 은 양쪽 경로 모두 레이어-스텝마다 한 번 돌므로,
+    # 그 호출 수를 레이어 수로 나누면 nsys 런의 실제 스텝수가 나온다.
+    nl = None
+    for c in CELLS:
+        nl = nl or (plans.get(c) or {}).get("layers")
 
-    print("\n[2] 역할별 커널 시간  ms/토큰   (스텝수는 plan 로그에서 읽는다)")
+    def steps(c):
+        v = data.get(c)
+        if v and nl:
+            for name, _t, inst in v["kern"]:
+                if "shifted_step" in name and inst:
+                    return inst / nl
+        return (plans.get(c) or {}).get("steps") or 0
+
+    print("\n[2] 역할별 커널 시간  ms/토큰   (스텝수는 shifted_step 호출수/레이어수로 역산)")
     print(lj("셀", 7) + rj("스텝", 7) + "".join(rj(r, 9) for r in ORDER)
           + rj("Σ커널", 9) + rj("H2D", 8) + rj("H2D MB", 9))
     for c in CELLS:
@@ -231,7 +246,7 @@ for model in models:
         if not s:
             print(lj(c, 7) + rj("—", 7) + "  (스텝수 모름 — plan 패밀리 먼저)")
             continue
-        row = lj(c, 7) + rj(f"{s:,}", 7)
+        row = lj(c, 7) + rj(f"{s:,.0f}", 7)
         for r in ORDER:
             row += rj(f"{v['roles'].get(r, 0.0)/1e6/s:.3f}", 9)
         h2d = sum(t for k, t in v["mem"].items() if "HtoD" in k or "Host-to" in k)
