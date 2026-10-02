@@ -26,6 +26,7 @@
 # usage
 #   bash ablation.sh quick   # 새 질문 셋만 빠르게, 보정 재사용     (5모델 ~90분)
 #   bash ablation.sh calg    # 그룹 입도 tau 만 덧붙인다 (cal 보존)
+#   bash ablation.sh probe   # vb 를 낮춰 CPU 가 임계 팔이 되는 지점 탐색
 #   bash ablation.sh cpu     # CPU 팔 직접 측정 (work / join / evsync)
 #   bash ablation.sh threads # -t 스윕 — CPU 임계경로 + 입도의 CPU 효과
 #   bash ablation.sh all     # 전 패밀리 순서대로, 로그 파일로      (5모델 ~7시간)
@@ -155,7 +156,7 @@ run() {
       KAIROX_DUMP_ACTIVATION_PATH="${DUMP_OUT:-kairox_activation.csv}" \
       KAIROX_CLAMP_INT="${CLAMP_INT:-0}" KAIROX_PROFILE_CPU="${PROF_CPU:-0}" \
     ${WRAP:-} $BIN -m "$M/$1.gguf" -kairox-ms "$M/$2.gguf" \
-      -cffn -fit off -ngl all --no-mmap --no-direct-io -vb 0 -no-cnv \
+      -cffn -fit off -ngl all --no-mmap --no-direct-io -vb "${VB:-0}" -no-cnv \
       --repeat-penalty 1.1 -t "${THREADS:-12}" -s 42 -c 1024 -n "${11}" --no-warmup --ignore-eos \
       --bench-prompt-file prompts.txt --bench-runs "${12}" --bench-warmup 0 --bench-no-print 2>&1
 }
@@ -597,6 +598,55 @@ quick)
     echo "끝 $(date '+%F %T')"
   } 2>&1 | tee "$log"
   echo; echo "전체 로그: $log"
+  ;;
+
+# ---------------------------------------------------------------- probe
+# CPU 가 임계 팔이 되는 작동점을 찾는다.
+#
+# 지금까지 모든 측정이 -vb 0 (GPU 텐서 예산 무제한) 이었다. 캐시가 가장 크고
+# 미스가 가장 적은 지점, 즉 CPU 가 가장 한가한 자리다 — 가설에 가장 불리하다.
+# vb 를 낮추면 캐시가 줄고 미스가 늘어 CPU 팔이 커진다.
+#
+# 탐지기는 join 대 evsync 다. join > evsync 면 CPU 가 앞선 팔이다.
+# 스레드를 줄이는 것과 달리 CPU 를 불구로 만들지 않고 CPU 팔만 키운다 —
+# 그래서 여기서 입도가 이기면 "효율" 이 아니라 "성능" 주장이 된다.
+#
+# PROFILE_PLAN 과 PROFILE_CPU 를 같이 켠다. plan 은 타임스탬프만 더하므로
+# work 를 오염시키지 않는다 (덤프와 달리 D2H 를 걸지 않는다).
+probe)
+  [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
+  VBLIST=${VBLIST:-"0 7 5 4 3"}
+  PCELLS=${PCELLS:-"Ga Niso"}
+  printf '%-13s %-6s %4s %10s %9s %9s %9s %9s %8s\n' \
+         모델 셀 vb 전송/Ls work join evsync 호스트 maxPAL
+  for e in "${MODELS[@]}"; do
+    IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
+    want "$nm" || continue
+    check "$nm" "$mo" "$base" "$g16" "$g1" || continue
+    for c in "${CELLS[@]}"; do
+      read -r cn _ <<<"$c"
+      [[ " $PCELLS " == *" $cn "* ]] || continue
+      setcell "$nm" "$mo" "$base" "$g16" "$g1" "$c" || continue
+      for vb in $VBLIST; do
+        log="abl_logs/probe__${nm}__${cn}__vb${vb}.log"
+        VB="$vb" PROF_CPU=1 WRAP= \
+          run "$mo" "$C_SPLIT" "$C_ZC" "$C_GA" "$C_BA" "$C_B" "$C_NS" "$C_CP" "$C_AL" \
+              "$C_TAU" "$N" 1 1 0 0 > "$log" 2>&1
+        g=$(sed -n 's/.*실행 *\([0-9.]*\).*/\1/p' "$log" | tail -1)
+        gg=$([[ -n "$g" ]] && awk -v x="$g" -v s="$([[ "$C_SPL" == g1 ]] && echo 1 || echo "$gs")" \
+              'BEGIN{printf "%.1f", x*s}' || echo "—")
+        wk=$(sed -n 's/.*work *: *\([0-9.]*\).*/\1/p' "$log" | tail -1)
+        jn=$(sed -n 's/.*join *: *\([0-9.]*\).*/\1/p' "$log" | tail -1)
+        ev=$(sed -n 's/.*evsync *: *\([0-9.]*\).*/\1/p' "$log" | tail -1)
+        hs=$(sed -n 's/.*합계 *: *\([0-9.]*\).*/\1/p' "$log" | tail -1)
+        mx=$([[ -n "$jn$ev" ]] && awk -v a="$jn" -v b="$ev" 'BEGIN{print (a>b)?"CPU":"GPU"}' || echo "—")
+        printf '%-13s %-6s %4s %10s %9s %9s %9s %9s %8s\n' \
+               "$nm" "$cn" "$vb" "$gg" "${wk:-실패}" "${jn:-—}" "${ev:-—}" "${hs:-—}" "$mx"
+      done
+    done
+  done
+  echo
+  echo "join > evsync 인 지점이 CPU 가 임계 팔인 작동점이다. 거기서 입도를 비교하면 된다."
   ;;
 
 # ---------------------------------------------------------------- cpu
