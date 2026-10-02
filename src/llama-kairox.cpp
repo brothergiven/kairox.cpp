@@ -295,6 +295,8 @@ kairox_cache_manager::kairox_cache_manager(llama_model * model, const char * kai
         lc->groups_to_evict.resize(lc->cache_shape.n_groups);
         // 되먹임이 켜져 있으면 여기서 시작해 스텝마다 조정되고, 꺼져 있으면 이 값이 고정 상한으로 쓰인다.
         lc->dfr_swap_budget.store(std::clamp(k_kairox_swap_budget_init, k_kairox_swap_budget_min, 1.0f));
+        // KAIROX_CLAMP_INT: 저자 배포본은 캐시 전체에서 시작해 병목 신호로 내려온다.
+        lc->dfr_clamp_k.store(lc->cache_shape.n_cached_groups);
         // tau_load 는 lambda 에서 유도된다(Algorithm 1 line 8). ANB 가 켜지면 스텝마다 갱신되고,
         // 꺼져 있으면 0 (= 필터 없음) 또는 KAIROX_TAU_LOAD 로 고정된 값이 그대로 쓰인다.
         lc->dfr_neg_tau = -kairox_tau_load(k_kairox_lambda_init);

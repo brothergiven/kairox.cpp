@@ -63,6 +63,25 @@ const float k_kairox_lambda_init           = get_env_float("KAIROX_DFR_LAMBDA_IN
 const float k_kairox_dfr_lambda_adapt_rate = get_env_float("KAIROX_DFR_LAMBDA_ADAPT_RATE", 0.05f);
 const float k_kairox_swap_budget_min      = get_env_float("KAIROX_SWAP_BUDGET_MIN", 0.01f); // swap budget 최소값
 /**
+ * 저자 배포 구현의 원본 예산 제어로 되돌린다 (절제 실험용 기준선).
+ *
+ * 배포본은 그룹 *개수* 를 정수로 들고 병목 신호에 따라 `(int)(cur * (1 +- alpha))` 로 갱신했다.
+ * 결함이 둘이다.
+ *   (a) 1.05f 는 실제로 1.04999995 라 올라가려면 cur >= 21 이어야 한다. cur <= 20 에서는
+ *       (int) 절단에 먹혀 증가가 불가능하고, 감소만 된다. 1 은 흡수 상태다
+ *       ((int)(1 * 1.05) == 1). 한 번 20 아래로 떨어지면 영구히 1 로 수렴한다.
+ *   (b) x(1+a) 와 x(1-a) 를 번갈아 하면 곱이 1-a^2 < 1 이라 20 위에서도 단조 하강한다.
+ *       n_cached_groups 에서 1 까지 log(n)/log(1/(1-a)) 스텝 — opt-6.7b 는 약 124 스텝.
+ * 그래서 100~200 토큰 안에 레이어-스텝당 1 그룹으로 얼어붙고, 동적 분할이 사실상 꺼진다.
+ *
+ * 수정판(기본)은 캐시 대비 실수 비율로 들고 x(1+a) / /(1+a) 로 대칭 갱신한다 —
+ * 갇힘이 없고 g 와 무관하게 같은 뉴런 수를 교체한다.
+ *
+ * 이 손잡이를 켜면 원본 경로가 돌아온다. "우리가 무엇을 이겼는가" 를 말하려면
+ * 수정판이 아니라 이쪽이 기준선이어야 한다.
+ */
+const bool k_kairox_clamp_int = get_env_bool("KAIROX_CLAMP_INT", false);
+/**
  * 스왑 예산의 초기값. 되먹임을 끄면(KAIROX_DFR_LAMBDA_ADAPT_RATE=0) 이 값이 고정 상한으로 계속 쓰인다.
  * 캐시 대비 비율이라 group_size 와 무관하다 — ratio x n_cached_groups x group_size = ratio x n_cached_neurons.
  * 즉 g 를 바꿔도 같은 비율이면 같은 바이트가 움직이므로, 입도 비교를 전송량 고정으로 할 수 있다.
@@ -215,7 +234,8 @@ struct kairox_layer_cache {
     std::vector<reload_pair> reload_plan;
     std::vector<int>         groups_to_load;
     std::vector<int>         groups_to_evict;
-    // std::atomic<int>         dfr_clamp_k = 0;
+    // KAIROX_CLAMP_INT: 저자 배포본의 정수 그룹 예산. init 에서 n_cached_groups 로 채운다.
+    std::atomic<int>         dfr_clamp_k = { 0 };
     std::atomic<float>       dfr_swap_budget = { 1.0f }; // 캐시 대비 비율. 1.0이면 캐시 전체를 스왑할 수 있음. 0.5이면 캐시 절반만 스왑 가능
     int                     planned_budget = 0; // RELOAD_PLAN 한 번에 스왑할 수 있는 그룹 개수
     uint64_t                reload_scan_cursor = 0; // KAIROX_RELOAD_ROTATE: plan 스캔 시작점. executor 스레드에서만 쓴다
@@ -258,6 +278,9 @@ struct kairox_layer_cache {
 
     int reload_budget_groups() const {
         const int cap = cache_shape.n_cached_groups;
+        if (k_kairox_clamp_int) {
+            return std::clamp(dfr_clamp_k.load(), 1, cap); // 저자 배포본 경로
+        }
         return std::clamp((int) std::ceil(dfr_swap_budget.load() * cap), 1, cap); // ceil 로 올림하여 최소 1개 이상, 최대 cap 이하로 제한
     }
 
@@ -409,6 +432,13 @@ struct SingleThreadExecutor {
                 const bool io_bound = !to_move.empty();
                 if (k_enable_kairox_anb) {
                     kairox_anb_feedback(lc, io_bound);
+                } else if (k_kairox_clamp_int) {
+                    // 저자 배포본 그대로. (int) 절단과 1-a^2 하강을 일부러 보존한다 —
+                    // 이 경로의 결함이 측정 대상이다.
+                    const int cur = lc->dfr_clamp_k.load();
+                    const int nxt = (int) (cur * (1.0f + (io_bound ? -k_kairox_dfr_lambda_adapt_rate
+                                                                   : k_kairox_dfr_lambda_adapt_rate)));
+                    lc->dfr_clamp_k.store(std::clamp(nxt, 1, lc->cache_shape.n_cached_groups));
                 } else {
                     const float cur = lc->dfr_swap_budget.load();
                     const float nxt = io_bound ? cur / (1.0f + k_kairox_dfr_lambda_adapt_rate)

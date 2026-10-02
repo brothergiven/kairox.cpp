@@ -10,6 +10,12 @@
 #   N     대 G       입도 단독        (양쪽 상한 없음)
 #   G     대 Ga      되먹임 단독      (그룹 입도)
 #   N     대 Niso    상한 단독
+#   Ga    대 Gorig   예산 제어 수정판 대 저자 배포본 (KAIROX_CLAMP_INT)
+#
+# 주의: Ga 는 저자 배포본이 아니다. 배포본의 정수 그룹 예산을 캐시 대비 실수 비율로
+# 바꾼 수정판이다 (커밋 1aa07022f). 원본은 (int) 절단 때문에 cur<=20 에서 증가가
+# 불가능하고 1 이 흡수 상태라, 76 스텝 안에 레이어-스텝당 1 그룹으로 얼어붙는다.
+# Gorig 가 그 원본이다 — "우리가 무엇을 이겼는가" 는 이 칸이 분모여야 한다.
 #
 # d_nooverhead.sh 는 NOSORT 와 GPU_COMPACT 를 한 플래그로 묶어 둬서 둘의 효과가 섞였다.
 # 여기서는 독립 인자다.
@@ -65,19 +71,20 @@ MODELS=(
   "opt-30b|opt-30b-Q4_K_M|opt-30b-sparkinfer-model-split|1024|28672"
 )
 
-# 이름 split zc gather batch 예산 nosort compact alpha
+# 이름 split zc gather batch 예산 nosort compact alpha clampint
 CELLS=(
-  "Ga    g16 0 0 0 one   0 0 0.05"
-  "Na    g1  1 0 0 one   0 0 0.05"
-  "G     g16 0 0 0 one   0 0 0.00"
-  "N     g1  1 0 0 one   0 0 0.00"
-  "Giso  g16 0 0 0 iso16 0 0 0.00"
-  "Niso  g1  1 0 0 iso1  0 0 0.00"
-  "Nhalf g1  1 0 0 half1 0 0 0.00"
-  "Nns   g1  1 0 0 iso1  1 0 0.00"
-  "Nnsc  g1  1 0 0 iso1  1 1 0.00"
-  "Gans  g16 0 0 0 one   1 0 0.05"
-  "Gansc g16 0 0 0 one   1 1 0.05"
+  "Gorig g16 0 0 0 one   0 0 0.05 1"
+  "Ga    g16 0 0 0 one   0 0 0.05 0"
+  "Na    g1  1 0 0 one   0 0 0.05 0"
+  "G     g16 0 0 0 one   0 0 0.00 0"
+  "N     g1  1 0 0 one   0 0 0.00 0"
+  "Giso  g16 0 0 0 iso16 0 0 0.00 0"
+  "Niso  g1  1 0 0 iso1  0 0 0.00 0"
+  "Nhalf g1  1 0 0 half1 0 0 0.00 0"
+  "Nns   g1  1 0 0 iso1  1 0 0.00 0"
+  "Nnsc  g1  1 0 0 iso1  1 1 0.00 0"
+  "Gans  g16 0 0 0 one   1 0 0.05 0"
+  "Gansc g16 0 0 0 one   1 1 0.05 0"
 )
 # Gans / Gansc 는 배포본(그룹 입도 + 되먹임)에 기구만 얹은 칸이다.
 # NOSORT 와 압축은 입도와 독립인데 그룹 입도에서 한 번도 재지 않았다.
@@ -120,6 +127,7 @@ run() {
       KAIROX_DFR_LAMBDA_INIT=0.67 KAIROX_DFR_LAMBDA_ADAPT_RATE=$9 \
       KAIROX_PROFILE_PLAN=${13} KAIROX_DUMP_ACTIVATION=${14} KAIROX_PLAN_DELAY_US=${15} \
       KAIROX_DUMP_ACTIVATION_PATH="${DUMP_OUT:-kairox_activation.csv}" \
+      KAIROX_CLAMP_INT="${CLAMP_INT:-0}" \
     ${WRAP:-} $BIN -m "$M/$1.gguf" -kairox-ms "$M/$2.gguf" \
       -cffn -fit off -ngl all --no-mmap --no-direct-io -vb 0 -no-cnv \
       --repeat-penalty 1.1 -t "${THREADS:-12}" -s 42 -c 1024 -n "${11}" --no-warmup --ignore-eos \
@@ -129,7 +137,8 @@ run() {
 # 셀 한 줄을 풀어 run 인자로 쓸 전역을 채운다.
 setcell() {
   local nm=$1 mo=$2 base=$3 g16=$4 g1=$5
-  read -r C_NAME C_SPL C_ZC C_GA C_BA C_BUD C_NS C_CP C_AL <<<"$6"
+  read -r C_NAME C_SPL C_ZC C_GA C_BA C_BUD C_NS C_CP C_AL C_CI <<<"$6"
+  export CLAMP_INT="${C_CI:-0}"   # run() 이 환경에서 읽는다
   C_SPLIT="$base-$g16"; [[ "$C_SPL" == g1 ]] && C_SPLIT="$base-$g1"
   C_TAU=0
   if ((C_NS)); then
@@ -166,6 +175,7 @@ case "${1:-cal}" in
 # tau: NOSORT 는 |S| 를 K 에 맞추는 제어가 없다. |S|/K -> 1 이 되는 tau 를 찾는다.
 cal)
   : > "$CAL"
+  export CLAMP_INT=0   # 보정은 수정판 기준으로 한다 (Gorig 는 예산 손잡이를 무시한다)
 
   # 전송량 한 번 측정. $1=모델 $2=split $3=zerocopy $4=group_size $5=B
   probe() {
@@ -475,7 +485,7 @@ show)
       if setcell "$nm" "$mo" "$base" "$g16" "$g1" "$c"; then
         printf '%-10s %-6s %-26s %-4s %-4s %-4s %-9s %-8s %-7s %-8s %s\n' \
           "$nm" "$C_NAME" "...-${C_SPLIT##*-}" "$C_ZC" "$C_GA" "$C_BA" "$C_B" "$C_TAU" \
-          "$C_NS" "$C_CP" "$C_AL"
+          "$C_NS" "$C_CP" "$C_AL/$C_CI"
       else
         printf '%-10s %-6s  <<< %s 에 값 없음 (cal 먼저)\n' "$nm" "$cn" "$CAL"
       fi
@@ -487,6 +497,7 @@ show)
 # 그룹 입도 tau 만 덧붙인다. cal 은 파일을 지우고 다시 쓰므로 (수요 측정 + 상한 탐색)
 # 이미 유효한 보정이 있을 때 taug 하나 때문에 전체를 다시 돌릴 이유가 없다.
 calg)
+  export CLAMP_INT=0
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
   for e in "${MODELS[@]}"; do
     IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
@@ -528,9 +539,9 @@ quick)
     echo; echo "######################## calg  $(date '+%F %T')"
     bash ablation.sh calg
     echo; echo "######################## ts (Gans/Gansc)  $(date '+%F %T')"
-    CELL="Ga G Gans Gansc Nnsc" bash ablation.sh ts
+    CELL="Gorig Ga G Gans Gansc Nnsc" bash ablation.sh ts
     echo; echo "######################## plan (Gans/Gansc)  $(date '+%F %T')"
-    CELL="Ga Gans Gansc" bash ablation.sh plan
+    CELL="Gorig Ga Gans Gansc" bash ablation.sh plan
     echo; echo "######################## threads  $(date '+%F %T')"
     bash ablation.sh threads
     echo "끝 $(date '+%F %T')"
@@ -553,7 +564,7 @@ quick)
 threads)
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
   TLIST=${TLIST:-"2 4 12 24"}
-  TCELLS=${TCELLS:-"Ga Giso Niso Nnsc"}
+  TCELLS=${TCELLS:-"Gorig Ga Giso Niso Nnsc"}
   declare -A R
   printf '%-13s %-6s %4s %-9s  %s\n' 모델 셀 -t t/s clocks
   for e in "${MODELS[@]}"; do

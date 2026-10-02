@@ -16,7 +16,8 @@ import csv, glob, os, re, statistics, unicodedata
 
 PROF  = os.environ.get("PROF",  "prof")
 LOGS  = os.environ.get("LOGS",  "abl_logs")
-CELLS = ["Ga", "Na", "G", "N", "Giso", "Niso", "Nhalf", "Nns", "Nnsc", "Gans", "Gansc"]
+CELLS = ["Gorig", "Ga", "Na", "G", "N", "Giso", "Niso", "Nhalf", "Nns", "Nnsc",
+         "Gans", "Gansc"]
 
 # 커널을 역할로 묶는다. 위에서부터 먼저 맞는 것.
 ROLES = [
@@ -264,6 +265,7 @@ for model in models:
     print(lj("셀", 7) + rj("Σ커널", 9) + rj("H2D", 8) + rj("합", 9) + rj("짝ms/tok", 10)
           + rj("합/벽", 8) + rj("짝t/s", 9) + rj("긴t/s", 9) + rj("긴/Ga", 8))
     ga_long = statistics.median(ts_wall[(model, "Ga")]) if (model, "Ga") in ts_wall else None
+    go_long = statistics.median(ts_wall[(model, "Gorig")]) if (model, "Gorig") in ts_wall else None
     for c in CELLS:
         v = data.get(c)
         if not v:
@@ -282,7 +284,8 @@ for model in models:
               + rj(f"{tot/pms*100:.0f}%" if (tot and pms) else "—", 8)
               + rj(f"{pw:.2f}" if pw else "—", 9)
               + rj(f"{lw:.2f}" if lw else "—", 9)
-              + rj(f"{lw/ga_long:.3f}" if (lw and ga_long) else "—", 8))
+              + rj(f"{lw/ga_long:.3f}" if (lw and ga_long) else "—", 8)
+              + rj(f"{lw/go_long:.3f}" if (lw and go_long) else "—", 10))
 
     # ---- 4. 한 변수씩. 각 쌍이 무엇을 분리하는지 이름을 달아 둔다.
     print("\n[4] 한 변수 비교   Δms/토큰 (커널) 과 Δ벽시계")
@@ -296,7 +299,9 @@ for model in models:
              ("Nhalf","Niso", "상한 절반"),
              ("Gans", "Ga",   "정렬 제거 (그룹 입도)"),
              ("Gansc","Gans", "호스트 스캔 제거 (그룹)"),
-             ("Nnsc", "Gansc","입도 (기구를 양쪽에 얹고)")]
+             ("Nnsc", "Gansc","입도 (기구를 양쪽에 얹고)"),
+             ("Ga",   "Gorig","예산 제어 수정판 (저자 배포본 대비)"),
+             ("Nnsc", "Gorig","우리 스택 (저자 배포본 대비)")]
     print(lj("비교", 16) + lj("무엇이 바뀌나", 24)
           + "".join(rj(r, 8) for r in ORDER) + rj("ΣΔ", 8) + rj("Δ벽시계", 10) + rj("배", 7))
     for hi, lo, what in PAIRS:
