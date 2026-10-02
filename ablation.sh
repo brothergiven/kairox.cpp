@@ -85,7 +85,19 @@ CELLS=(
   "Nnsc  g1  1 0 0 iso1  1 1 0.00 0"
   "Gans  g16 0 0 0 one   1 0 0.05 0"
   "Gansc g16 0 0 0 one   1 1 0.05 0"
+  "Gns   g16 0 0 0 one   1 0 0.00 0"
+  "Gnsc  g16 0 0 0 one   1 1 0.00 0"
 )
+# Gns / Gnsc 는 Gans / Gansc 의 alpha=0 짝이다. 이게 없으면 "기구를 양쪽에 얹고
+# 입도만 본" 비교(Nnsc 대 Gansc)에 alpha 가 섞여 한 변수 비교가 아니게 된다.
+# 셋을 가른다:
+#   Gnsc  / G      그룹 입도에서 기구가 버는 것
+#   Nnsc  / Gnsc   기구를 양쪽에 얹고 입도만
+#   Gansc / Gnsc   기구를 얹은 뒤에도 되먹임이 남는가
+# 세 번째가 핵심이다 — 되먹임은 그룹 과적재를 사후에 치우는 장치였고,
+# NOSORT 가 이미 전송을 깎아놨으면(opt-6.7b 16.7 -> 14.2 짝) 치울 게 줄어든다.
+# 1 에 가까우면 되먹임도 기구에 흡수된다는 뜻이고, 그게 "제어기를 없애고
+# 사슬을 짧게" 라는 설계 논지를 직접 지지한다.
 # Gans / Gansc 는 배포본(그룹 입도 + 되먹임)에 기구만 얹은 칸이다.
 # NOSORT 와 압축은 입도와 독립인데 그룹 입도에서 한 번도 재지 않았다.
 #   작으면  우리 기여는 "g=1 이 만든 세금을 g=1 이 되걷는 것" 에 그친다
@@ -539,9 +551,9 @@ quick)
     echo; echo "######################## calg  $(date '+%F %T')"
     bash ablation.sh calg
     echo; echo "######################## ts (Gans/Gansc)  $(date '+%F %T')"
-    CELL="Gorig Ga G Gans Gansc Nnsc" bash ablation.sh ts
+    CELL="Gorig Ga G Gans Gansc Gns Gnsc Nnsc" bash ablation.sh ts
     echo; echo "######################## plan (Gans/Gansc)  $(date '+%F %T')"
-    CELL="Gorig Ga Gans Gansc" bash ablation.sh plan
+    CELL="Gorig Ga Gans Gansc Gns Gnsc" bash ablation.sh plan
     echo; echo "######################## threads  $(date '+%F %T')"
     bash ablation.sh threads
     echo "끝 $(date '+%F %T')"
