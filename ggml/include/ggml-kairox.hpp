@@ -118,6 +118,18 @@ const bool k_kairox_profile_plan           = get_env_bool("KAIROX_PROFILE_PLAN",
  *   join ~ 0      CPU 가 필요해지기 전에 끝났다. 다른 팔에 가려져 있다
  *   join 이 크다  CPU 가 임계 팔이고 그 값이 곧 비용이다
  */
+/**
+ * 캐시 용량을 이 비율로 줄인다 (KAIROX_CACHE_SCALE, 기본 1.0 = 그대로).
+ *
+ * CPU 가 임계 팔이 되는 작동점을 찾으려면 캐시를 줄여 미스를 늘려야 한다.
+ * -vb 는 그 용도로 못 쓴다 — GPU *전체* 할당 예산이라 캐시는 남는 것만 받고,
+ * 비 FFN 가중치와 KV 가 이미 먹은 만큼을 빼면 쓸 수 있는 정수 GiB 점이
+ * 모델마다 두세 개뿐이다 (opt-6.7b 는 vb 5 에서 음수가 되어 abort).
+ *
+ * 이 손잡이는 캐시 용량에 직접 곱하므로 모델과 무관하게 같은 비율로 쓸 수 있다.
+ */
+const float k_kairox_cache_scale = get_env_float("KAIROX_CACHE_SCALE", 1.0f);
+
 const bool k_kairox_profile_cpu = get_env_bool("KAIROX_PROFILE_CPU", false);
 
 struct kairox_cpu_profile {
@@ -183,6 +195,22 @@ const bool k_kairox_gather_verify     = get_env_bool("KAIROX_GATHER_VERIFY", fal
 // DDR 왕복 한 번과 VRAM 내부 복사 한 번이 사라진다. 대신 PCIe 응답을 기다리는 동안 SM 을 점유한다.
 // --no-mmap 이라 CPU 가중치가 pinned 버퍼에 있어야 동작한다. 아니면 gather 경로로 폴백한다.
 const bool k_kairox_zerocopy = get_env_bool("KAIROX_ZEROCOPY", false);
+/**
+ * zerocopy 커널의 블록 수 상한 (KAIROX_ZEROCOPY_BLOCKS, 0 = 무제한).
+ *
+ * 커널은 grid-stride 라 블록을 줄여도 결과가 같다 — 스레드마다 더 많은 워드를 맡을 뿐이다.
+ * 바뀌는 건 *동시에 떠 있는 호스트 읽기 요청 수* 다.
+ *
+ * SM 이 PCIe 로 호스트 DRAM 을 읽는 동안 CPU 희소 FFN 도 같은 DRAM 을 쓴다.
+ * 요청이 많이 겹치면 메모리 컨트롤러 큐가 차서 CPU 쪽 지연이 올라간다.
+ * 측정: 같은 바이트를 옮기는데 복사 엔진(batch)은 CPU work 10.5 ms, zerocopy 는 21.6 ms
+ * (opt-30b, g=1). 대역폭이 아니라 동시 요청 수의 문제다.
+ *
+ *   블록 많음  전송 빠름(join 낮음)  CPU 느림(work 높음)
+ *   블록 적음  전송 느림             CPU 빠름
+ * 두 팔의 합이 최소인 점이 사이에 있다. 전송만 보고 고르면 CPU 를 잃는다.
+ */
+const int k_kairox_zerocopy_blocks = get_env_int("KAIROX_ZEROCOPY_BLOCKS", 0);
 
 /**
  * cudaMemcpyBatchAsync (CUDA 12.8+) 경로. 흩어진 복사 n 개를 API 호출 1 회로 제출한다.

@@ -160,6 +160,16 @@ void kairox_gather_reload(char *              weight_base,
 // 짜면 오히려 느리다 — 워드마다 스레드 하나를 깔아 요청을 최대한 겹친다.
 // ---------------------------------------------------------------------------
 template <typename T>
+// KAIROX_ZEROCOPY_BLOCKS: 동시에 떠 있는 호스트 읽기 요청 수를 줄여 CPU 쪽 DRAM
+// 지연을 낮춘다. grid-stride 커널이라 블록을 줄여도 결과는 같다.
+static inline int kairox_zerocopy_blocks(size_t want) {
+    size_t b = std::min<size_t>(65535, want);
+    if (k_kairox_zerocopy_blocks > 0) {
+        b = std::min<size_t>(b, (size_t) k_kairox_zerocopy_blocks);
+    }
+    return (int) std::max<size_t>(1, b);
+}
+
 static __global__ void kairox_zerocopy_kernel(const T * __restrict__ host_base,
                                               T * __restrict__ cache_base,
                                               const int * __restrict__ group_idx,
@@ -327,13 +337,13 @@ void kairox_zerocopy_reload(char *              weight_base,
             (uintptr_t) host_dev_ptr % sizeof(uint4) == 0) {
             const int    wpg    = (int) (group_nbytes / sizeof(uint4));
             const size_t total  = (size_t) wpg * n;
-            const int    blocks = (int) std::min<size_t>(65535, (total + threads - 1) / threads);
+            const int    blocks = kairox_zerocopy_blocks((total + threads - 1) / threads);
             kairox_zerocopy_kernel<uint4><<<blocks, threads, 0, stream>>>(
                 (const uint4 *) host_dev_ptr, (uint4 *) cache_base, grp_dev, slot_dev, wpg, (int) n);
         } else {
             const int    wpg    = (int) group_nbytes;
             const size_t total  = (size_t) wpg * n;
-            const int    blocks = (int) std::min<size_t>(65535, (total + threads - 1) / threads);
+            const int    blocks = kairox_zerocopy_blocks((total + threads - 1) / threads);
             kairox_zerocopy_kernel<char><<<blocks, threads, 0, stream>>>(
                 (const char *) host_dev_ptr, (char *) cache_base, grp_dev, slot_dev, wpg, (int) n);
         }
