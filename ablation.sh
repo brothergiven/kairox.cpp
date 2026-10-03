@@ -58,6 +58,17 @@ REPS=${REPS:-3}
 # cal / ts / plan / slope 가 모두 N 을 쓴다. nsys 만 트레이스 크기 때문에 짧게 간다.
 N=${N:-512}
 NSYS_N=${NSYS_N:-128}
+# zerocopy 커널의 동시 호스트 읽기 요청 수. 0 = 무제한(기존 동작).
+# SM 이 호스트 DRAM 을 읽는 동안 CPU 희소 FFN 도 같은 DRAM 을 쓴다. 요청이
+# 많이 겹치면 CPU 쪽 접근 지연이 올라간다. opt-30b, g=1 에서 쓸어 보면
+#   blocks   무제한    32      16       8       4       2
+#   work     22.243  18.155  16.909  15.984  14.745  13.965   단조 감소
+#   join     12.053  12.345  14.864  18.160  26.367  47.653   단조 증가
+#   t/s       22.63   22.83   24.39   22.48   19.83   13.80
+# 16 이 최적이고 무제한 대비 +7.8% 다. 기존 코드가 무제한이었으니 지금까지의
+# 모든 g=1 측정이 CPU 에 가장 불리한 설정에서 나온 값이다.
+# (전송이 가벼운 모델 — opt-6.7b, 조각 150~166 — 에서는 전 구간 무반응이다.)
+ZCB=${ZCB:-16}
 CAL=${CAL:-abl_cal.txt}
 BIN=./build_rel/bin/llama-completion
 
@@ -155,6 +166,7 @@ run() {
       KAIROX_PROFILE_PLAN=${13} KAIROX_DUMP_ACTIVATION=${14} KAIROX_PLAN_DELAY_US=${15} \
       KAIROX_DUMP_ACTIVATION_PATH="${DUMP_OUT:-kairox_activation.csv}" \
       KAIROX_CLAMP_INT="${CLAMP_INT:-0}" KAIROX_PROFILE_CPU="${PROF_CPU:-0}" \
+      KAIROX_ZEROCOPY_BLOCKS="${ZCB:-16}" \
     ${WRAP:-} $BIN -m "$M/$1.gguf" -kairox-ms "$M/$2.gguf" \
       -cffn -fit off -ngl all --no-mmap --no-direct-io -vb "${VB:-0}" -no-cnv \
       --repeat-penalty 1.1 -t "${THREADS:-12}" -s 42 -c 1024 -n "${11}" --no-warmup --ignore-eos \
