@@ -159,7 +159,6 @@ void kairox_gather_reload(char *              weight_base,
 // PCIe 읽기는 지연이 길고 동시 요청 수로 대역폭을 채운다. 그래서 그룹마다 스레드 하나(행 스레드)로
 // 짜면 오히려 느리다 — 워드마다 스레드 하나를 깔아 요청을 최대한 겹친다.
 // ---------------------------------------------------------------------------
-template <typename T>
 // KAIROX_ZEROCOPY_BLOCKS: 동시에 떠 있는 호스트 읽기 요청 수를 줄여 CPU 쪽 DRAM
 // 지연을 낮춘다. grid-stride 커널이라 블록을 줄여도 결과는 같다.
 static inline int kairox_zerocopy_blocks(size_t want) {
@@ -170,6 +169,7 @@ static inline int kairox_zerocopy_blocks(size_t want) {
     return (int) std::max<size_t>(1, b);
 }
 
+template <typename T>
 static __global__ void kairox_zerocopy_kernel(const T * __restrict__ host_base,
                                               T * __restrict__ cache_base,
                                               const int * __restrict__ group_idx,
