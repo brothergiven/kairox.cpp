@@ -84,19 +84,20 @@ MODELS=(
   "opt-30b|opt-30b-Q4_K_M|opt-30b-sparkinfer-model-split|1024|28672"
 )
 
-# 이름 split zc gather batch 예산 nosort compact alpha clampint
+# 이름 split zc gather batch 예산 nosort compact alpha clampint anb lambda
 CELLS=(
   # 기준선 — 그룹 입도
-  "Gorig g16 0 0 0 one   0 0 0.05 1"   # 배포본 — 정수 그룹 예산
-  "Ga    g16 0 0 0 one   0 0 0.05 0"   # 구현본 base — 실수 비율 예산 + 되먹임
-  "Gnsc  g16 0 0 0 one   1 1 0.00 0"   # 그룹 + 기구 (alpha=0, 제안과 같은 조건)
-  "Gansc g16 0 0 0 one   1 1 0.05 0"   # 그룹 + 되먹임 + 기구 — 현재 최강 구성
+  "Ganb  g16 0 0 0 one   0 0 0.05 0 1 0.50"   # 논문 ANB — Algorithm 1 Phase 1
+  "Gorig g16 0 0 0 one   0 0 0.05 1 0 0.67"   # 배포본 — 정수 그룹 예산
+  "Ga    g16 0 0 0 one   0 0 0.05 0 0 0.67"   # 구현본 base — 실수 비율 예산 + 되먹임
+  "Gnsc  g16 0 0 0 one   1 1 0.00 0 0 0.67"   # 그룹 + 기구 (alpha=0, 제안과 같은 조건)
+  "Gansc g16 0 0 0 one   1 1 0.05 0 0 0.67"   # 그룹 + 되먹임 + 기구 — 현재 최강 구성
   # 제안 사다리 — 뉴런 입도
-  "N     g1  1 0 0 one   0 0 0.00 0"   # 묶음 전송, 상한 없음
-  "Niso  g1  1 0 0 iso1  0 0 0.00 0"   # + 동일전송 상한
-  "Nhalf g1  1 0 0 half1 0 0 0.00 0"   # + 더 조임
-  "Nns   g1  1 0 0 iso1  1 0 0.00 0"   # + NOSORT
-  "Nnsc  g1  1 0 0 iso1  1 1 0.00 0"   # + GPU 압축  <- 제안 전체
+  "N     g1  1 0 0 one   0 0 0.00 0 0 0.67"   # 묶음 전송, 상한 없음
+  "Niso  g1  1 0 0 iso1  0 0 0.00 0 0 0.67"   # + 동일전송 상한
+  "Nhalf g1  1 0 0 half1 0 0 0.00 0 0 0.67"   # + 더 조임
+  "Nns   g1  1 0 0 iso1  1 0 0.00 0 0 0.67"   # + NOSORT
+  "Nnsc  g1  1 0 0 iso1  1 1 0.00 0 0 0.67"   # + GPU 압축  <- 제안 전체
 )
 # Gnsc / Gansc 는 한 번 내렸다가 되살렸다. 측정해 보니 제안의 진짜 경쟁자다 —
 # 두 모델 모두에서 최선이 그룹 입도였고 Nnsc 는 3위와 꼴찌였다.
@@ -158,11 +159,11 @@ clocks() { nvidia-smi --query-gpu=clocks.sm,clocks.mem,temperature.gpu,power.dra
 # stdout 으로 런 로그 전체를 흘린다. 앞에 nsys 같은 래퍼를 붙이려면 WRAP 에 담는다.
 # 덤프 경로는 DUMP_OUT 으로 받는다 (KAIROX_DUMP_ACTIVATION=1 일 때만 의미가 있다).
 run() {
-  env CUDA_VISIBLE_DEVICES=0 KAIROX_PARALLEL=1 KAIROX_ANB=0 \
+  env CUDA_VISIBLE_DEVICES=0 KAIROX_PARALLEL=1 KAIROX_ANB="${ANB:-0}" \
       KAIROX_ZEROCOPY=$3 KAIROX_GATHER=$4 KAIROX_MEMCPY_BATCH=$5 \
       KAIROX_SWAP_BUDGET=$6 KAIROX_SWAP_BUDGET_MIN=0.001 \
       KAIROX_NOSORT=$7 KAIROX_TAU_LOAD=${10} KAIROX_GPU_COMPACT=$8 \
-      KAIROX_DFR_LAMBDA_INIT=0.67 KAIROX_DFR_LAMBDA_ADAPT_RATE=$9 \
+      KAIROX_DFR_LAMBDA_INIT="${LAM:-0.67}" KAIROX_DFR_LAMBDA_ADAPT_RATE=$9 \
       KAIROX_PROFILE_PLAN=${13} KAIROX_DUMP_ACTIVATION=${14} KAIROX_PLAN_DELAY_US=${15} \
       KAIROX_DUMP_ACTIVATION_PATH="${DUMP_OUT:-kairox_activation.csv}" \
       KAIROX_CLAMP_INT="${CLAMP_INT:-0}" KAIROX_PROFILE_CPU="${PROF_CPU:-0}" \
@@ -187,8 +188,8 @@ is_dup() {
 # 셀 한 줄을 풀어 run 인자로 쓸 전역을 채운다.
 setcell() {
   local nm=$1 mo=$2 base=$3 g16=$4 g1=$5
-  read -r C_NAME C_SPL C_ZC C_GA C_BA C_BUD C_NS C_CP C_AL C_CI <<<"$6"
-  export CLAMP_INT="${C_CI:-0}"   # run() 이 환경에서 읽는다
+  read -r C_NAME C_SPL C_ZC C_GA C_BA C_BUD C_NS C_CP C_AL C_CI C_ANB C_LAM <<<"$6"
+  export CLAMP_INT="${C_CI:-0}" ANB="${C_ANB:-0}" LAM="${C_LAM:-0.67}"  # run() 이 환경에서 읽는다
   C_SPLIT="$base-$g16"; [[ "$C_SPL" == g1 ]] && C_SPLIT="$base-$g1"
   C_TAU=0
   if ((C_NS)); then
@@ -225,6 +226,7 @@ case "${1:-cal}" in
 # tau: NOSORT 는 |S| 를 K 에 맞추는 제어가 없다. |S|/K -> 1 이 되는 tau 를 찾는다.
 cal)
   : > "$CAL"
+  export ANB=0 LAM=0.67
   export CLAMP_INT=0   # 보정은 수정판 기준으로 한다 (Gorig 는 예산 손잡이를 무시한다)
 
   # 전송량 한 번 측정. $1=모델 $2=split $3=zerocopy $4=group_size $5=B
@@ -521,7 +523,7 @@ dump)
     for c in "${CELLS[@]}"; do
       read -r cn _ <<<"$c"
       [[ -n "$CELL" ]] && { wantc "$cn" || continue; } || \
-        { [[ " ${DCELLS:-Gorig Ga Gnsc Gansc Niso Nnsc} " == *" $cn "* ]] || continue; }
+        { [[ " ${DCELLS:-Gorig Ga Ganb Gnsc Gansc Niso Nnsc} " == *" $cn "* ]] || continue; }
       setcell "$nm" "$mo" "$base" "$g16" "$g1" "$c" || continue
       out="abl_dumps/${nm}__${cn}.csv"
       [[ -f "$out" ]] && { echo "   skip $nm/$cn — 이미 있음"; continue; }
@@ -561,6 +563,7 @@ show)
 # 이미 유효한 보정이 있을 때 taug 하나 때문에 전체를 다시 돌릴 이유가 없다.
 calg)
   export CLAMP_INT=0
+  export ANB=0 LAM=0.67
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
   for e in "${MODELS[@]}"; do
     IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
@@ -672,7 +675,7 @@ probe)
 # 경과 시간이라 ggml 풀의 스핀 대기에 오염되지 않는다 — perf 로는 못 쟀던 이유다.
 cpu)
   [[ -f "$CAL" ]] || { echo "$CAL 없음 — 먼저 'bash $0 cal'" >&2; exit 1; }
-  CCELLS=${CCELLS:-"Gorig Ga Gnsc Gansc Niso Nnsc"}
+  CCELLS=${CCELLS:-"Gorig Ga Ganb Gnsc Gansc Niso Nnsc"}
   for e in "${MODELS[@]}"; do
     IFS='|' read -r nm mo base g16 g1 <<<"$e"; gs=$((g1 / g16))
     want "$nm" || continue
